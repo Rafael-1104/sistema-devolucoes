@@ -3,7 +3,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { Loader2, LogIn } from "lucide-react";
 import { Field } from "@/components/ui-kit/PageSection";
 import { useAuth } from "@/lib/auth";
-import logo from "@/assets/logo.png";
+
 
 export const Route = createFileRoute("/login")({
   head: () => ({
@@ -51,7 +51,11 @@ function Login() {
     <main className="flex min-h-screen items-center justify-center bg-background px-4 py-10">
       <div className="w-full max-w-sm rounded-2xl border border-border bg-card p-8 shadow-soft">
         <div className="mb-6 flex flex-col items-center gap-3 text-center">
-          <img src={logo} alt="Sistema de Devoluções" className="h-12 w-12 rounded-xl object-contain" />
+          <img
+            src="/android-chrome-192x192.png"
+            alt="Sistema de Devoluções"
+            className="h-16 w-16 rounded-xl object-contain"
+          />
           <div>
             <h1 className="text-lg font-bold text-foreground">Sistema de Devoluções</h1>
             <p className="text-xs text-muted-foreground">Controle interno de devolução de materiais</p>

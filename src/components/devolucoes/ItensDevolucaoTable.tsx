@@ -1,5 +1,26 @@
-import { Pencil, Trash2 } from "lucide-react";
+import { Copy, Pencil, Trash2 } from "lucide-react";
+import { toast } from "sonner";
 import { totalItem, type ItemDevolucao } from "@/lib/mock-data";
+
+async function copiarCodigo(codigo: string) {
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(codigo);
+    } else {
+      const area = document.createElement("textarea");
+      area.value = codigo;
+      area.style.position = "fixed";
+      area.style.opacity = "0";
+      document.body.appendChild(area);
+      area.select();
+      document.execCommand("copy");
+      document.body.removeChild(area);
+    }
+    toast.success("Código copiado!");
+  } catch {
+    toast.error("Não foi possível copiar o código.");
+  }
+}
 
 export function ItensDevolucaoTable({
   itens,
@@ -28,7 +49,20 @@ export function ItensDevolucaoTable({
         <tbody>
           {itens.map((item) => (
             <tr key={item.id} className="border-b border-border/70 last:border-0 hover:bg-muted/50">
-              <td className="px-6 py-3.5 font-semibold text-foreground">{item.materialCodigo}</td>
+              <td className="px-6 py-3.5 font-semibold text-foreground">
+                <span className="inline-flex items-center gap-1.5">
+                  {item.materialCodigo}
+                  <button
+                    type="button"
+                    onClick={() => void copiarCodigo(item.materialCodigo)}
+                    title="Copiar código"
+                    aria-label={`Copiar código ${item.materialCodigo}`}
+                    className="flex h-6 w-6 items-center justify-center rounded-md border border-border text-muted-foreground transition-colors hover:border-primary/40 hover:bg-primary-soft hover:text-primary-dark"
+                  >
+                    <Copy className="h-3.5 w-3.5" />
+                  </button>
+                </span>
+              </td>
               <td className="px-6 py-3.5 text-muted-foreground">{item.descricao}</td>
               <td className="px-6 py-3.5 text-foreground">{item.lote}</td>
               <td className="px-6 py-3.5">
