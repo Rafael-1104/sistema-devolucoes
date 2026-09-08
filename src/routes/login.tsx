@@ -3,7 +3,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { Loader2, LogIn } from "lucide-react";
 import { Field } from "@/components/ui-kit/PageSection";
 import { useAuth } from "@/lib/auth";
-import logo from "@/assets/logo.png";
+
 
 export const Route = createFileRoute("/login")({
   head: () => ({
