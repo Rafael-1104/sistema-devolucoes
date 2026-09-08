@@ -161,8 +161,16 @@ export async function recarregar(): Promise<void> {
       volumesPorItem.set(itemId, lista);
     }
 
+    // Ordem estável dos itens: criação (quando existir) e, como desempate, o id.
+    // Assim editar um item nunca muda sua posição na lista.
+    const chaveOrdem = (linha: Payload) => {
+      const criado = texto(campo(linha, ["criado_em", "created_at", "data_criacao", "inserted_at"])) ?? "";
+      return `${criado}|${String(campo(linha, ["id"]) ?? "")}`;
+    };
+    const itensOrdenados = [...itensRaw].sort((a, b) => chaveOrdem(a).localeCompare(chaveOrdem(b)));
+
     const itensPorDevolucao = new Map<string, ItemDevolucao[]>();
-    for (const i of itensRaw) {
+    for (const i of itensOrdenados) {
       const devId = String(campo(i, ["devolucao_id"]) ?? "");
       const lista = itensPorDevolucao.get(devId) ?? [];
       lista.push(mapItem(i, volumesPorItem.get(String(campo(i, ["id"]))) ?? [], descricoes));
