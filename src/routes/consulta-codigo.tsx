@@ -35,6 +35,36 @@ function ConsultaCodigo() {
   const [resultados, setResultados] = useState<Material[]>([]);
   const [carregando, setCarregando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
+  const [codigoCopiado, setCodigoCopiado] = useState<string | null>(null);
+  const copiaTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (copiaTimer.current) clearTimeout(copiaTimer.current);
+    };
+  }, []);
+
+  const copiarCodigo = async (codigo: string) => {
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(codigo);
+      } else {
+        const area = document.createElement("textarea");
+        area.value = codigo;
+        area.style.position = "fixed";
+        area.style.opacity = "0";
+        document.body.appendChild(area);
+        area.select();
+        document.execCommand("copy");
+        document.body.removeChild(area);
+      }
+      setCodigoCopiado(codigo);
+      if (copiaTimer.current) clearTimeout(copiaTimer.current);
+      copiaTimer.current = setTimeout(() => setCodigoCopiado(null), 1800);
+    } catch {
+      setCodigoCopiado(null);
+    }
+  };
 
   const termo1 = palavra1.trim();
   const termo2 = palavra2.trim();
