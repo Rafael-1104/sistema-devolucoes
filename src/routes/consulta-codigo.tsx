@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { Search, Eraser, Loader2 } from "lucide-react";
+import { Search, Eraser, Loader2, Copy, Check } from "lucide-react";
 
 import { AppLayout } from "@/components/layout/AppLayout";
 import { Panel, Field } from "@/components/ui-kit/PageSection";
@@ -35,6 +35,36 @@ function ConsultaCodigo() {
   const [resultados, setResultados] = useState<Material[]>([]);
   const [carregando, setCarregando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
+  const [codigoCopiado, setCodigoCopiado] = useState<string | null>(null);
+  const copiaTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (copiaTimer.current) clearTimeout(copiaTimer.current);
+    };
+  }, []);
+
+  const copiarCodigo = async (codigo: string) => {
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(codigo);
+      } else {
+        const area = document.createElement("textarea");
+        area.value = codigo;
+        area.style.position = "fixed";
+        area.style.opacity = "0";
+        document.body.appendChild(area);
+        area.select();
+        document.execCommand("copy");
+        document.body.removeChild(area);
+      }
+      setCodigoCopiado(codigo);
+      if (copiaTimer.current) clearTimeout(copiaTimer.current);
+      copiaTimer.current = setTimeout(() => setCodigoCopiado(null), 1800);
+    } catch {
+      setCodigoCopiado(null);
+    }
+  };
 
   const termo1 = palavra1.trim();
   const termo2 = palavra2.trim();
@@ -147,7 +177,27 @@ function ConsultaCodigo() {
                       key={`${m.codigo}-${m.descricao}`}
                       className="border-b border-border/70 last:border-0 hover:bg-muted/50"
                     >
-                      <td className="px-6 py-3.5 font-mono font-semibold text-foreground">{m.codigo}</td>
+                      <td className="px-6 py-3.5 font-mono font-semibold text-foreground">
+                        <span className="inline-flex items-center gap-2">
+                          {m.codigo}
+                          <button
+                            type="button"
+                            onClick={() => void copiarCodigo(m.codigo)}
+                            title="Copiar código"
+                            aria-label={`Copiar código ${m.codigo}`}
+                            className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-border text-muted-foreground transition-colors hover:border-primary/40 hover:bg-primary-soft hover:text-primary-dark"
+                          >
+                            {codigoCopiado === m.codigo ? (
+                              <Check className="h-3.5 w-3.5" />
+                            ) : (
+                              <Copy className="h-3.5 w-3.5" />
+                            )}
+                          </button>
+                          {codigoCopiado === m.codigo ? (
+                            <span className="text-xs font-medium text-primary-dark">Código copiado!</span>
+                          ) : null}
+                        </span>
+                      </td>
                       <td className="px-6 py-3.5 text-muted-foreground">{m.descricao}</td>
                     </tr>
                   ))}
