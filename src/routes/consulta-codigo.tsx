@@ -177,7 +177,27 @@ function ConsultaCodigo() {
                       key={`${m.codigo}-${m.descricao}`}
                       className="border-b border-border/70 last:border-0 hover:bg-muted/50"
                     >
-                      <td className="px-6 py-3.5 font-mono font-semibold text-foreground">{m.codigo}</td>
+                      <td className="px-6 py-3.5 font-mono font-semibold text-foreground">
+                        <span className="inline-flex items-center gap-2">
+                          {m.codigo}
+                          <button
+                            type="button"
+                            onClick={() => void copiarCodigo(m.codigo)}
+                            title="Copiar código"
+                            aria-label={`Copiar código ${m.codigo}`}
+                            className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-border text-muted-foreground transition-colors hover:border-primary/40 hover:bg-primary-soft hover:text-primary-dark"
+                          >
+                            {codigoCopiado === m.codigo ? (
+                              <Check className="h-3.5 w-3.5" />
+                            ) : (
+                              <Copy className="h-3.5 w-3.5" />
+                            )}
+                          </button>
+                          {codigoCopiado === m.codigo ? (
+                            <span className="text-xs font-medium text-primary-dark">Código copiado!</span>
+                          ) : null}
+                        </span>
+                      </td>
                       <td className="px-6 py-3.5 text-muted-foreground">{m.descricao}</td>
                     </tr>
                   ))}
