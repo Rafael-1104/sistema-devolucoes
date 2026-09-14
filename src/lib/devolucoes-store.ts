@@ -240,26 +240,45 @@ async function comErro<T>(acao: () => Promise<T>): Promise<T | null> {
   }
 }
 
+/**
+ * Impede que a MESMA operação seja executada duas vezes em paralelo
+ * (cliques repetidos antes da primeira gravação terminar).
+ */
+const emAndamento = new Set<string>();
+
+async function exclusiva<T>(chave: string, acao: () => Promise<T>): Promise<T | null> {
+  if (emAndamento.has(chave)) return null;
+  emAndamento.add(chave);
+  try {
+    return await acao();
+  } finally {
+    emAndamento.delete(chave);
+  }
+}
+
 export async function listarDevolucoes() {
   await recarregar();
   return state;
 }
 
 export async function criarDevolucao(): Promise<Devolucao | null> {
-  return comErro(async () => {
-    const { data: sessao } = await supabase.auth.getSession();
-    const userId = sessao.session?.user.id ?? null;
+  const resultado = await exclusiva("criarDevolucao", () =>
+    comErro(async () => {
+      const { data: sessao } = await supabase.auth.getSession();
+      const userId = sessao.session?.user.id ?? null;
 
-    const [linha] = await inserirFlex(
-      "devolucoes",
-      [{ status: "em_montagem", criado_por: userId }],
-      ALIAS_DEVOLUCAO,
-    );
-    if (!linha) throw new Error("Devolução não criada.");
-    await recarregar();
-    const id = String(campo(linha, ["id"]));
-    return state.find((d) => d.id === id) ?? mapDevolucao(linha, [], new Map());
-  });
+      const [linha] = await inserirFlex(
+        "devolucoes",
+        [{ status: "em_montagem", criado_por: userId }],
+        ALIAS_DEVOLUCAO,
+      );
+      if (!linha) throw new Error("Devolução não criada.");
+      await recarregar();
+      const id = String(campo(linha, ["id"]));
+      return state.find((d) => d.id === id) ?? mapDevolucao(linha, [], new Map());
+    }),
+  );
+  return resultado ?? null;
 }
 
 async function gravarVolumes(itemId: string, volumes: { numero: number; quantidade: number }[]) {
@@ -274,92 +293,135 @@ async function gravarVolumes(itemId: string, volumes: { numero: number; quantida
 export async function adicionarItem(
   devolucaoId: string,
   dados: { materialCodigo: string; descricao?: string; lote: string; volumes: { numero: number; quantidade: number }[] },
-) {
-  await comErro(async () => {
-    const total = dados.volumes.reduce((acc, v) => acc + v.quantidade, 0);
-    const [linha] = await inserirFlex(
-      "itens_devolucao",
-      [
-        {
-          devolucao_id: devolucaoId,
-          material_codigo: dados.materialCodigo,
-          descricao: dados.descricao ?? null,
-          lote: dados.lote,
-          quantidade_total: total,
-        },
-      ],
-      ALIAS_ITEM,
-    );
-    if (!linha) throw new Error("Item não criado.");
-    await gravarVolumes(String(campo(linha, ["id"])), dados.volumes);
-    await recarregar();
-  });
+): Promise<boolean> {
+  const ok = await exclusiva(`adicionarItem:${devolucaoId}`, () =>
+    comErro(async () => {
+      const total = dados.volumes.reduce((acc, v) => acc + v.quantidade, 0);
+      const [linha] = await inserirFlex(
+        "itens_devolucao",
+        [
+          {
+            devolucao_id: devolucaoId,
+            material_codigo: dados.materialCodigo,
+            descricao: dados.descricao ?? null,
+            lote: dados.lote,
+            quantidade_total: total,
+          },
+        ],
+        ALIAS_ITEM,
+      );
+      if (!linha) throw new Error("Item não criado.");
+      await gravarVolumes(String(campo(linha, ["id"])), dados.volumes);
+      await recarregar();
+      return true;
+    }),
+  );
+  return ok === true;
 }
 
 export async function atualizarItem(
   _devolucaoId: string,
   itemId: string,
   dados: { materialCodigo: string; descricao?: string; lote: string; volumes: { numero: number; quantidade: number }[] },
-) {
-  await comErro(async () => {
-    const total = dados.volumes.reduce((acc, v) => acc + v.quantidade, 0);
-    await atualizarFlex(
-      "itens_devolucao",
-      itemId,
-      {
-        material_codigo: dados.materialCodigo,
-        descricao: dados.descricao ?? null,
-        lote: dados.lote,
-        quantidade_total: total,
-      },
-      ALIAS_ITEM,
-    );
-    const { error } = await supabase.from("volumes_item").delete().eq("item_id", itemId);
-    if (error) throw error;
-    await gravarVolumes(itemId, dados.volumes);
-    await recarregar();
-  });
+): Promise<boolean> {
+  const ok = await exclusiva(`atualizarItem:${itemId}`, () =>
+    comErro(async () => {
+      const total = dados.volumes.reduce((acc, v) => acc + v.quantidade, 0);
+      await atualizarFlex(
+        "itens_devolucao",
+        itemId,
+        {
+          material_codigo: dados.materialCodigo,
+          descricao: dados.descricao ?? null,
+          lote: dados.lote,
+          quantidade_total: total,
+        },
+        ALIAS_ITEM,
+      );
+      const { error } = await supabase.from("volumes_item").delete().eq("item_id", itemId);
+      if (error) throw error;
+      await gravarVolumes(itemId, dados.volumes);
+      await recarregar();
+      return true;
+    }),
+  );
+  return ok === true;
 }
 
-export async function removerItem(_devolucaoId: string, itemId: string) {
-  await comErro(async () => {
-    await supabase.from("volumes_item").delete().eq("item_id", itemId);
-    const { error } = await supabase.from("itens_devolucao").delete().eq("id", itemId);
-    if (error) throw error;
-    await recarregar();
-  });
+/**
+ * Edição inline: altera SOMENTE o lote do item existente (e alterado_em,
+ * quando a coluna existir). Nenhum outro campo é tocado.
+ */
+export async function atualizarLoteItem(itemId: string, lote: string): Promise<boolean> {
+  const valor = lote.trim();
+  if (!valor) {
+    toast.error("Informe o lote.");
+    return false;
+  }
+  const ok = await exclusiva(`atualizarLote:${itemId}`, () =>
+    comErro(async () => {
+      await atualizarFlex("itens_devolucao", itemId, { lote: valor, alterado_em: new Date().toISOString() }, {
+        lote: [],
+        alterado_em: ["updated_at"],
+      });
+      await recarregar();
+      return true;
+    }),
+  );
+  return ok === true;
 }
 
-export async function registrarCsvGerado(devolucaoId: string) {
-  await comErro(async () => {
-    await atualizarFlex(
-      "devolucoes",
-      devolucaoId,
-      {
-        status: "csv_gerado",
-        csv_gerado_em: new Date().toISOString(),
-        csv_gerado_por: await usuarioAutenticadoId(),
-      },
-      ALIAS_DEVOLUCAO,
-    );
-    await recarregar();
-  });
+export async function removerItem(_devolucaoId: string, itemId: string): Promise<boolean> {
+  const ok = await exclusiva(`removerItem:${itemId}`, () =>
+    comErro(async () => {
+      await supabase.from("volumes_item").delete().eq("item_id", itemId);
+      const { error } = await supabase.from("itens_devolucao").delete().eq("id", itemId);
+      if (error) throw error;
+      await recarregar();
+      return true;
+    }),
+  );
+  return ok === true;
 }
 
-export async function vincularRm(devolucaoId: string, rm: string) {
-  await comErro(async () => {
-    await atualizarFlex(
-      "devolucoes",
-      devolucaoId,
-      { rm, status: "rm_vinculada", rm_vinculada_em: new Date().toISOString() },
-      ALIAS_DEVOLUCAO,
-    );
-    await recarregar();
-  });
+export async function registrarCsvGerado(devolucaoId: string): Promise<boolean> {
+  const ok = await exclusiva(`csv:${devolucaoId}`, () =>
+    comErro(async () => {
+      await atualizarFlex(
+        "devolucoes",
+        devolucaoId,
+        {
+          status: "csv_gerado",
+          csv_gerado_em: new Date().toISOString(),
+          csv_gerado_por: await usuarioAutenticadoId(),
+        },
+        ALIAS_DEVOLUCAO,
+      );
+      await recarregar();
+      return true;
+    }),
+  );
+  return ok === true;
+}
+
+export async function vincularRm(devolucaoId: string, rm: string): Promise<boolean> {
+  const ok = await exclusiva(`rm:${devolucaoId}`, () =>
+    comErro(async () => {
+      await atualizarFlex(
+        "devolucoes",
+        devolucaoId,
+        { rm, status: "rm_vinculada", rm_vinculada_em: new Date().toISOString() },
+        ALIAS_DEVOLUCAO,
+      );
+      await recarregar();
+      return true;
+    }),
+  );
+  return ok === true;
 }
 
 export async function finalizarDevolucao(devolucaoId: string): Promise<boolean> {
-  const ok = await comErro(async () => {
+  const ok = await exclusiva(`finalizar:${devolucaoId}`, () => comErro(async () => {
     // 1) Usa a função existente no banco, se ela estiver exposta.
     const rpc = await supabase.rpc("finalizar_devolucao", { p_devolucao_id: devolucaoId });
     const semFuncao =
@@ -389,12 +451,12 @@ export async function finalizarDevolucao(devolucaoId: string): Promise<boolean> 
     }
     await recarregar();
     return true;
-  });
+  }));
   return ok === true;
 }
 
-export async function removerDevolucao(devolucaoId: string) {
-  await comErro(async () => {
+export async function removerDevolucao(devolucaoId: string): Promise<boolean> {
+  const ok = await exclusiva(`removerDevolucao:${devolucaoId}`, () => comErro(async () => {
     const alvo = state.find((d) => d.id === devolucaoId);
     for (const item of alvo?.itens ?? []) {
       await supabase.from("volumes_item").delete().eq("item_id", item.id);
@@ -403,5 +465,7 @@ export async function removerDevolucao(devolucaoId: string) {
     const { error } = await supabase.from("devolucoes").delete().eq("id", devolucaoId);
     if (error) throw error;
     await recarregar();
-  });
+    return true;
+  }));
+  return ok === true;
 }
