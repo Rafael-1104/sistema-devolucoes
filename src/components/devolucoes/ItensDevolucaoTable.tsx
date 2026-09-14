@@ -1,4 +1,5 @@
-import { Copy, Pencil, Trash2 } from "lucide-react";
+import { useState } from "react";
+import { Check, Copy, Loader2, Pencil, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 import { totalItem, type ItemDevolucao } from "@/lib/mock-data";
 
