@@ -421,7 +421,7 @@ export async function vincularRm(devolucaoId: string, rm: string): Promise<boole
 }
 
 export async function finalizarDevolucao(devolucaoId: string): Promise<boolean> {
-  const ok = await comErro(async () => {
+  const ok = await exclusiva(`finalizar:${devolucaoId}`, () => comErro(async () => {
     // 1) Usa a função existente no banco, se ela estiver exposta.
     const rpc = await supabase.rpc("finalizar_devolucao", { p_devolucao_id: devolucaoId });
     const semFuncao =
