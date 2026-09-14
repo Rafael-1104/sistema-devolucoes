@@ -262,7 +262,7 @@ export async function listarDevolucoes() {
 }
 
 export async function criarDevolucao(): Promise<Devolucao | null> {
-  return comErro(async () => {
+  return exclusiva("criarDevolucao", () => comErro(async () => {
     const { data: sessao } = await supabase.auth.getSession();
     const userId = sessao.session?.user.id ?? null;
 
