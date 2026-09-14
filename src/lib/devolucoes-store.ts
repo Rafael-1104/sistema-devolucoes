@@ -384,32 +384,40 @@ export async function removerItem(_devolucaoId: string, itemId: string): Promise
   return ok === true;
 }
 
-export async function registrarCsvGerado(devolucaoId: string) {
-  await comErro(async () => {
-    await atualizarFlex(
-      "devolucoes",
-      devolucaoId,
-      {
-        status: "csv_gerado",
-        csv_gerado_em: new Date().toISOString(),
-        csv_gerado_por: await usuarioAutenticadoId(),
-      },
-      ALIAS_DEVOLUCAO,
-    );
-    await recarregar();
-  });
+export async function registrarCsvGerado(devolucaoId: string): Promise<boolean> {
+  const ok = await exclusiva(`csv:${devolucaoId}`, () =>
+    comErro(async () => {
+      await atualizarFlex(
+        "devolucoes",
+        devolucaoId,
+        {
+          status: "csv_gerado",
+          csv_gerado_em: new Date().toISOString(),
+          csv_gerado_por: await usuarioAutenticadoId(),
+        },
+        ALIAS_DEVOLUCAO,
+      );
+      await recarregar();
+      return true;
+    }),
+  );
+  return ok === true;
 }
 
-export async function vincularRm(devolucaoId: string, rm: string) {
-  await comErro(async () => {
-    await atualizarFlex(
-      "devolucoes",
-      devolucaoId,
-      { rm, status: "rm_vinculada", rm_vinculada_em: new Date().toISOString() },
-      ALIAS_DEVOLUCAO,
-    );
-    await recarregar();
-  });
+export async function vincularRm(devolucaoId: string, rm: string): Promise<boolean> {
+  const ok = await exclusiva(`rm:${devolucaoId}`, () =>
+    comErro(async () => {
+      await atualizarFlex(
+        "devolucoes",
+        devolucaoId,
+        { rm, status: "rm_vinculada", rm_vinculada_em: new Date().toISOString() },
+        ALIAS_DEVOLUCAO,
+      );
+      await recarregar();
+      return true;
+    }),
+  );
+  return ok === true;
 }
 
 export async function finalizarDevolucao(devolucaoId: string): Promise<boolean> {
