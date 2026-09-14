@@ -451,12 +451,12 @@ export async function finalizarDevolucao(devolucaoId: string): Promise<boolean> 
     }
     await recarregar();
     return true;
-  });
+  }));
   return ok === true;
 }
 
-export async function removerDevolucao(devolucaoId: string) {
-  await comErro(async () => {
+export async function removerDevolucao(devolucaoId: string): Promise<boolean> {
+  const ok = await exclusiva(`removerDevolucao:${devolucaoId}`, () => comErro(async () => {
     const alvo = state.find((d) => d.id === devolucaoId);
     for (const item of alvo?.itens ?? []) {
       await supabase.from("volumes_item").delete().eq("item_id", item.id);
