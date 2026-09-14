@@ -465,5 +465,7 @@ export async function removerDevolucao(devolucaoId: string): Promise<boolean> {
     const { error } = await supabase.from("devolucoes").delete().eq("id", devolucaoId);
     if (error) throw error;
     await recarregar();
-  });
+    return true;
+  }));
+  return ok === true;
 }
