@@ -240,6 +240,22 @@ async function comErro<T>(acao: () => Promise<T>): Promise<T | null> {
   }
 }
 
+/**
+ * Impede que a MESMA operação seja executada duas vezes em paralelo
+ * (cliques repetidos antes da primeira gravação terminar).
+ */
+const emAndamento = new Set<string>();
+
+async function exclusiva<T>(chave: string, acao: () => Promise<T>): Promise<T | null> {
+  if (emAndamento.has(chave)) return null;
+  emAndamento.add(chave);
+  try {
+    return await acao();
+  } finally {
+    emAndamento.delete(chave);
+  }
+}
+
 export async function listarDevolucoes() {
   await recarregar();
   return state;
