@@ -1,4 +1,4 @@
-import { Eye, FileText } from "lucide-react";
+import { Eye, FileText, Trash2 } from "lucide-react";
 import { StatusBadge } from "@/components/ui-kit/StatusBadge";
 import { dataDaDevolucao, totalDevolucao, type Devolucao } from "@/lib/mock-data";
 
@@ -6,10 +6,12 @@ export function DevolucoesTable({
   data,
   onView,
   onReport,
+  onDelete,
 }: {
   data: Devolucao[];
   onView?: (d: Devolucao) => void;
   onReport?: (d: Devolucao) => void;
+  onDelete?: (d: Devolucao) => void;
 }) {
   return (
     <div className="overflow-x-auto">
@@ -65,6 +67,16 @@ export function DevolucoesTable({
                   >
                     <FileText className="h-4 w-4" />
                   </button>
+                  {d.status !== "finalizada" && (
+                    <button
+                      type="button"
+                      onClick={() => onDelete?.(d)}
+                      title="Excluir devolução"
+                      className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-muted-foreground transition-colors hover:border-destructive/40 hover:bg-destructive/10 hover:text-destructive"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  )}
                 </div>
               </td>
             </tr>

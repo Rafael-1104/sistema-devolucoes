@@ -465,17 +465,68 @@ export async function finalizarDevolucao(devolucaoId: string): Promise<boolean> 
   return ok === true;
 }
 
-export async function removerDevolucao(devolucaoId: string): Promise<boolean> {
-  const ok = await exclusiva(`removerDevolucao:${devolucaoId}`, () => comErro(async () => {
-    const alvo = state.find((d) => d.id === devolucaoId);
-    for (const item of alvo?.itens ?? []) {
-      await supabase.from("volumes_item").delete().eq("item_id", item.id);
+export async function removerDevolucao(
+  devolucaoId: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const resultado = await exclusiva(`removerDevolucao:${devolucaoId}`, async () => {
+    try {
+      const alvo = state.find((d) => d.id === devolucaoId);
+      if (!alvo) throw new Error("Devolução não encontrada.");
+      if (alvo.status === "finalizada") throw new Error("Devoluções finalizadas não podem ser excluídas.");
+      for (const item of alvo.itens) {
+        const { data: volumesExcluidos, error } = await supabase
+          .from("volumes_item")
+          .delete()
+          .eq("item_id", item.id)
+          .select("id");
+        if (error) throw new Error(`Falha ao excluir volumes_item do item ${item.id}: ${error.message}`);
+        if (volumesExcluidos.length !== item.volumes.length) {
+          throw new Error(
+            `O DELETE de volumes_item do item ${item.id} afetou ${volumesExcluidos.length} registro(s), mas eram esperados ${item.volumes.length}. Verifique RLS/policy ou as permissões do usuário.`,
+          );
+        }
+      }
+      const { data: itensExcluidos, error: erroItens } = await supabase
+        .from("itens_devolucao")
+        .delete()
+        .eq("devolucao_id", devolucaoId)
+        .select("id");
+      if (erroItens) throw new Error(`Falha ao excluir itens_devolucao da devolução ${devolucaoId}: ${erroItens.message}`);
+      if (itensExcluidos.length !== alvo.itens.length) {
+        throw new Error(
+          `O DELETE de itens_devolucao afetou ${itensExcluidos.length} registro(s), mas eram esperados ${alvo.itens.length}. Verifique RLS/policy ou as permissões do usuário.`,
+        );
+      }
+      const { data: devolucoesExcluidas, error } = await supabase
+        .from("devolucoes")
+        .delete()
+        .eq("id", devolucaoId)
+        .select("id");
+      if (error) throw new Error(`Falha ao excluir devolucoes ${devolucaoId}: ${error.message}`);
+      if (devolucoesExcluidas.length !== 1) {
+        throw new Error(
+          `O DELETE de devolucoes não afetou o registro ${devolucaoId}. Verifique RLS/policy ou as permissões do usuário.`,
+        );
+      }
+
+      const { data: restante, error: erroVerificacao } = await supabase
+        .from("devolucoes")
+        .select("id")
+        .eq("id", devolucaoId)
+        .limit(1);
+      if (erroVerificacao) throw erroVerificacao;
+      if (((restante ?? []) as Payload[]).length > 0) {
+        throw new Error("A devolução ainda existe no banco após a tentativa de exclusão.");
+      }
+
+      if (devolucaoAtivaId === devolucaoId) devolucaoAtivaId = null;
+      await recarregar();
+      return { ok: true } as const;
+    } catch (e) {
+      const error = e instanceof Error ? e.message : String(e);
+      toast.error(error);
+      return { ok: false, error } as const;
     }
-    await supabase.from("itens_devolucao").delete().eq("devolucao_id", devolucaoId);
-    const { error } = await supabase.from("devolucoes").delete().eq("id", devolucaoId);
-    if (error) throw error;
-    await recarregar();
-    return true;
-  }));
-  return ok === true;
+  });
+  return resultado ?? { ok: false, error: "A exclusão já está em andamento." };
 }
