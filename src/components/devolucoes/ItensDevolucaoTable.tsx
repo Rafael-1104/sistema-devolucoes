@@ -1,9 +1,9 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Check, Copy, Loader2, Pencil, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 import { totalItem, type ItemDevolucao } from "@/lib/mock-data";
 
-async function copiarCodigo(codigo: string) {
+async function copiarCodigo(codigo: string): Promise<boolean> {
   try {
     if (navigator.clipboard?.writeText) {
       await navigator.clipboard.writeText(codigo);
@@ -17,9 +17,10 @@ async function copiarCodigo(codigo: string) {
       document.execCommand("copy");
       document.body.removeChild(area);
     }
-    toast.success("Código copiado!");
+    return true;
   } catch {
     toast.error("Não foi possível copiar o código.");
+    return false;
   }
 }
 
@@ -131,6 +132,22 @@ export function ItensDevolucaoTable({
   onSaveLote?: (item: ItemDevolucao, lote: string) => Promise<boolean>;
 }) {
   const [removendoId, setRemovendoId] = useState<string | null>(null);
+  const [codigoCopiado, setCodigoCopiado] = useState<string | null>(null);
+  const copiaTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (copiaTimer.current) clearTimeout(copiaTimer.current);
+    };
+  }, []);
+
+  async function copiarCodigoDaLista(codigo: string) {
+    const copiado = await copiarCodigo(codigo);
+    if (!copiado) return;
+    setCodigoCopiado(codigo);
+    if (copiaTimer.current) clearTimeout(copiaTimer.current);
+    copiaTimer.current = setTimeout(() => setCodigoCopiado(null), 1800);
+  }
 
   async function remover(item: ItemDevolucao) {
     if (removendoId) return;
@@ -163,13 +180,16 @@ export function ItensDevolucaoTable({
                   {item.materialCodigo}
                   <button
                     type="button"
-                    onClick={() => void copiarCodigo(item.materialCodigo)}
+                    onClick={() => void copiarCodigoDaLista(item.materialCodigo)}
                     title="Copiar código"
                     aria-label={`Copiar código ${item.materialCodigo}`}
                     className="flex h-6 w-6 items-center justify-center rounded-md border border-border text-muted-foreground transition-colors hover:border-primary/40 hover:bg-primary-soft hover:text-primary-dark"
                   >
                     <Copy className="h-3.5 w-3.5" />
                   </button>
+                  {codigoCopiado === item.materialCodigo && (
+                    <span className="text-xs font-medium text-primary-dark">Código copiado!</span>
+                  )}
                 </span>
               </td>
               <td className="px-6 py-3.5 text-muted-foreground">{item.descricao}</td>
