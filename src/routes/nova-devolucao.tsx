@@ -16,6 +16,14 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { AppLayout } from "@/components/layout/AppLayout";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Panel, Field } from "@/components/ui-kit/PageSection";
 import { StatusBadge } from "@/components/ui-kit/StatusBadge";
 import { ItensDevolucaoTable } from "@/components/devolucoes/ItensDevolucaoTable";
@@ -24,6 +32,7 @@ import { baixarCsv, montarCsvAreco } from "@/lib/csv";
 import {
   formatarDataHora,
   totalDevolucao,
+  totalItem,
   type ItemDevolucao,
 } from "@/lib/mock-data";
 import { buscarMaterialPorCodigo } from "@/lib/materiais";
@@ -185,6 +194,8 @@ function EditorDevolucao({ devolucaoId, origem }: { devolucaoId: string; origem?
   const itemRefs = useRef(new Map<string, HTMLTableRowElement>());
   const [focarCodigo, setFocarCodigo] = useState(false);
   const [itemParaRolarId, setItemParaRolarId] = useState<string | null>(null);
+  const [codigoSaiuCampo, setCodigoSaiuCampo] = useState(false);
+  const [itensDuplicados, setItensDuplicados] = useState<ItemDevolucao[]>([]);
 
   useEffect(() => {
     if (!focarCodigo) return;
@@ -208,6 +219,7 @@ function EditorDevolucao({ devolucaoId, origem }: { devolucaoId: string; origem?
   // Descrição vem sempre da tabela real public.materiais (código tratado como TEXTO).
   useEffect(() => {
     const alvo = codigo.trim();
+    setCodigoSaiuCampo(false);
     if (!alvo) {
       setDescricao("");
       setMaterialEncontrado(null);
@@ -242,6 +254,15 @@ function EditorDevolucao({ devolucaoId, origem }: { devolucaoId: string; origem?
     };
   }, [codigo]);
 
+  useEffect(() => {
+    if (!codigoSaiuCampo || buscandoMaterial || !materialEncontrado || !devolucao) return;
+    const duplicado = devolucao.itens.find(
+      (item) => item.id !== editandoId && item.materialCodigo === materialEncontrado,
+    );
+    setCodigoSaiuCampo(false);
+    if (duplicado) setItensDuplicados(devolucao.itens.filter((item) => item.id !== editandoId && item.materialCodigo === materialEncontrado));
+  }, [buscandoMaterial, codigoSaiuCampo, devolucao, editandoId, materialEncontrado]);
+
   const editavel = devolucao ? podeEditar(devolucao) : false;
   const total = useMemo(() => (devolucao ? totalDevolucao(devolucao) : 0), [devolucao]);
 
@@ -257,11 +278,20 @@ function EditorDevolucao({ devolucaoId, origem }: { devolucaoId: string; origem?
   }
 
   function carregarItem(item: ItemDevolucao) {
+    setItensDuplicados([]);
     setEditandoId(item.id);
     setCodigo(item.materialCodigo);
     setLote(item.lote);
     setVolumes(item.volumes.map((v) => ({ numero: v.numero, quantidade: String(v.quantidade) })));
     setErros({});
+  }
+
+  function manterItemSeparado() {
+    setItensDuplicados([]);
+  }
+
+  function editarItemExistente(item: ItemDevolucao) {
+    carregarItem(item);
   }
 
   async function salvarItem() {
@@ -409,6 +439,7 @@ function EditorDevolucao({ devolucaoId, origem }: { devolucaoId: string; origem?
                     placeholder="Ex.: 123456"
                     value={codigo}
                     onChange={(e) => setCodigo(e.target.value)}
+                    onBlur={() => setCodigoSaiuCampo(true)}
                   />
                 </div>
               </Field>
@@ -562,6 +593,53 @@ function EditorDevolucao({ devolucaoId, origem }: { devolucaoId: string; origem?
           </div>
         </Panel>
       </div>
+
+      <Dialog open={itensDuplicados.length > 0} onOpenChange={(aberto) => !aberto && manterItemSeparado()}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Material já cadastrado</DialogTitle>
+            <DialogDescription>Este item já existe na sua lista. O que deseja fazer?</DialogDescription>
+          </DialogHeader>
+          <div className="max-h-[55vh] space-y-3 overflow-y-auto pr-1">
+            {itensDuplicados.map((item) => (
+              <div key={item.id} className="space-y-3 rounded-lg border border-border bg-muted/30 p-4 text-sm">
+                <div className="grid gap-1 sm:grid-cols-2">
+                  <p>
+                    <span className="font-semibold text-foreground">Código:</span> {item.materialCodigo}
+                  </p>
+                  <p className="sm:col-span-2">
+                    <span className="font-semibold text-foreground">Descrição:</span> {item.descricao}
+                  </p>
+                  <p>
+                    <span className="font-semibold text-foreground">Lote:</span> {item.lote}
+                  </p>
+                  <p>
+                    <span className="font-semibold text-foreground">Quantidade total:</span> {totalItem(item)}
+                  </p>
+                </div>
+                <div>
+                  <p className="font-semibold text-foreground">Volumes:</p>
+                  <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-muted-foreground">
+                    {item.volumes.map((volume) => (
+                      <span key={volume.id}>
+                        Volume {volume.numero}: {volume.quantidade}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+                <button type="button" className={btnPrimary} onClick={() => editarItemExistente(item)}>
+                  Adicionar ao item existente
+                </button>
+              </div>
+            ))}
+          </div>
+          <DialogFooter className="gap-2 sm:gap-2">
+            <button type="button" className={btnGhost} onClick={manterItemSeparado}>
+              Adicionar separadamente
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
