@@ -124,12 +124,14 @@ export function ItensDevolucaoTable({
   onEdit,
   onRemove,
   onSaveLote,
+  onItemRef,
 }: {
   itens: ItemDevolucao[];
   readOnly?: boolean;
   onEdit?: (item: ItemDevolucao) => void;
   onRemove?: (item: ItemDevolucao) => void;
   onSaveLote?: (item: ItemDevolucao, lote: string) => Promise<boolean>;
+  onItemRef?: (id: string, element: HTMLTableRowElement | null) => void;
 }) {
   const [removendoId, setRemovendoId] = useState<string | null>(null);
   const [codigoCopiado, setCodigoCopiado] = useState<string | null>(null);
@@ -174,7 +176,11 @@ export function ItensDevolucaoTable({
         </thead>
         <tbody>
           {itens.map((item) => (
-            <tr key={item.id} className="border-b border-border/70 last:border-0 hover:bg-muted/50">
+            <tr
+              key={item.id}
+              ref={(element) => onItemRef?.(item.id, element)}
+              className="border-b border-border/70 last:border-0 hover:bg-muted/50"
+            >
               <td className="px-6 py-3.5 font-semibold text-foreground">
                 <span className="inline-flex items-center gap-1.5">
                   {item.materialCodigo}

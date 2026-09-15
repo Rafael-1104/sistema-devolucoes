@@ -181,13 +181,29 @@ function EditorDevolucao({ devolucaoId, origem }: { devolucaoId: string; origem?
   const [rmInput, setRmInput] = useState("");
   const [acaoSalvando, setAcaoSalvando] = useState<string | null>(null);
   const codigoInputRef = useRef<HTMLInputElement>(null);
+  const formularioRef = useRef<HTMLDivElement>(null);
+  const itemRefs = useRef(new Map<string, HTMLTableRowElement>());
   const [focarCodigo, setFocarCodigo] = useState(false);
+  const [itemParaRolarId, setItemParaRolarId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!focarCodigo) return;
     codigoInputRef.current?.focus();
     setFocarCodigo(false);
   }, [focarCodigo]);
+
+  useEffect(() => {
+    if (!editandoId) return;
+    formularioRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [editandoId]);
+
+  useEffect(() => {
+    if (!itemParaRolarId) return;
+    const item = itemRefs.current.get(itemParaRolarId);
+    if (!item) return;
+    item.scrollIntoView({ behavior: "smooth", block: "center" });
+    setItemParaRolarId(null);
+  }, [devolucao, itemParaRolarId]);
 
   // Descrição vem sempre da tabela real public.materiais (código tratado como TEXTO).
   useEffect(() => {
@@ -268,6 +284,7 @@ function EditorDevolucao({ devolucaoId, origem }: { devolucaoId: string; origem?
     };
 
     const eraAdicao = !editandoId;
+    const itemEditadoId = editandoId;
     const acao = eraAdicao ? "adicionar" : "item";
     setAcaoSalvando(acao);
     try {
@@ -278,6 +295,7 @@ function EditorDevolucao({ devolucaoId, origem }: { devolucaoId: string; origem?
       toast.success(editandoId ? "Item atualizado" : "Item adicionado");
       limpar();
       if (eraAdicao) setFocarCodigo(true);
+      else if (itemEditadoId) setItemParaRolarId(itemEditadoId);
     } finally {
       setAcaoSalvando(null);
     }
@@ -375,11 +393,12 @@ function EditorDevolucao({ devolucaoId, origem }: { devolucaoId: string; origem?
       )}
 
       {editavel && (
-        <Panel
-          title={editandoId ? "Editar item" : "Adicionar item"}
-          description="A descrição é preenchida automaticamente a partir do código do material"
-        >
-          <div className="grid gap-6 lg:grid-cols-2">
+        <div ref={formularioRef}>
+          <Panel
+            title={editandoId ? "Editar item" : "Adicionar item"}
+            description="A descrição é preenchida automaticamente a partir do código do material"
+          >
+            <div className="grid gap-6 lg:grid-cols-2">
             <div className="space-y-4">
               <Field label="Código do material" error={erros.codigo}>
                 <div className="relative">
@@ -409,9 +428,9 @@ function EditorDevolucao({ devolucaoId, origem }: { devolucaoId: string; origem?
             <div className="rounded-xl border border-border bg-muted/30 p-4">
               <VolumesEditor volumes={volumes} onChange={setVolumes} erro={erros.volumes} />
             </div>
-          </div>
+            </div>
 
-          <div className="mt-6 flex flex-wrap gap-3 border-t border-border pt-5">
+            <div className="mt-6 flex flex-wrap gap-3 border-t border-border pt-5">
             <button
               type="button"
               className={btnPrimary}
@@ -434,8 +453,9 @@ function EditorDevolucao({ devolucaoId, origem }: { devolucaoId: string; origem?
                 <X className="h-4 w-4" /> Cancelar edição
               </button>
             )}
-          </div>
-        </Panel>
+            </div>
+          </Panel>
+        </div>
       )}
 
       <Panel title="Itens da devolução" description="Quantidade total calculada pela soma dos volumes" bodyClassName="p-0">
@@ -443,6 +463,10 @@ function EditorDevolucao({ devolucaoId, origem }: { devolucaoId: string; origem?
           itens={devolucao.itens}
           readOnly={!editavel}
           onEdit={carregarItem}
+          onItemRef={(id, element) => {
+            if (element) itemRefs.current.set(id, element);
+            else itemRefs.current.delete(id);
+          }}
           onSaveLote={salvarLote}
           onRemove={async (item) => {
             const ok = await removerItem(devolucaoId, item.id);
