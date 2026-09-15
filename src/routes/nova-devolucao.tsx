@@ -1,7 +1,8 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle,
+  ArrowLeft,
   ArrowRight,
   CheckCircle2,
   FileSpreadsheet,
@@ -31,6 +32,8 @@ import {
   atualizarItem,
   atualizarLoteItem,
   criarDevolucao,
+  definirDevolucaoAtiva,
+  obterDevolucaoAtivaId,
   podeEditar,
   registrarCsvGerado,
   removerItem,
@@ -42,6 +45,7 @@ import {
 export const Route = createFileRoute("/nova-devolucao")({
   validateSearch: (search: Record<string, unknown>) => ({
     id: typeof search["id"] === "string" ? (search["id"] as string) : undefined,
+    ...(search["origem"] === "devolucoes" ? { origem: "devolucoes" as const } : {}),
   }),
   head: () => ({
     meta: [
@@ -69,10 +73,13 @@ const btnGhost =
   "inline-flex items-center justify-center gap-2 rounded-lg border border-border px-4 py-2.5 text-sm font-semibold text-foreground transition-colors hover:border-primary/40 hover:bg-primary-soft hover:text-primary-dark disabled:cursor-not-allowed disabled:opacity-50";
 
 function NovaDevolucao() {
-  const { id } = Route.useSearch();
+  const { id, origem } = Route.useSearch();
   const navigate = Route.useNavigate();
   const devolucoes = useDevolucoes();
-  const devolucao = useDevolucao(id);
+  const idEmMemoria = obterDevolucaoAtivaId();
+  const registroEmMemoria = devolucoes.find((d) => d.id === idEmMemoria);
+  const idAtivo = id ?? (idEmMemoria && registroEmMemoria?.status !== "finalizada" ? idEmMemoria : undefined);
+  const devolucao = useDevolucao(idAtivo);
   const [iniciando, setIniciando] = useState(false);
 
   const emAberto = devolucoes.filter((d) => d.status !== "finalizada");
@@ -83,12 +90,23 @@ function NovaDevolucao() {
     try {
       const nova = await criarDevolucao();
       if (!nova) return;
+      definirDevolucaoAtiva(nova.id);
       toast.success(`Devolução ${nova.identificador} iniciada`);
       void navigate({ to: "/nova-devolucao", search: { id: nova.id } });
     } finally {
       setIniciando(false);
     }
   }
+
+  useEffect(() => {
+    if (!id && idAtivo && devolucao) {
+      void navigate({ to: "/nova-devolucao", search: { id: idAtivo } });
+    }
+  }, [devolucao, id, idAtivo, navigate]);
+
+  useEffect(() => {
+    if (devolucao && devolucao.status !== "finalizada") definirDevolucaoAtiva(devolucao.id);
+  }, [devolucao]);
 
   if (!devolucao) {
     return (
@@ -139,12 +157,16 @@ function NovaDevolucao() {
 
   return (
     <AppLayout title={devolucao.identificador} subtitle="Montagem da devolução, exportação para o ARECO e vínculo da RM">
-      <EditorDevolucao key={devolucao.id} devolucaoId={devolucao.id} />
+      <EditorDevolucao
+        key={devolucao.id}
+        devolucaoId={devolucao.id}
+        {...(origem ? { origem } : {})}
+      />
     </AppLayout>
   );
 }
 
-function EditorDevolucao({ devolucaoId }: { devolucaoId: string }) {
+function EditorDevolucao({ devolucaoId, origem }: { devolucaoId: string; origem?: "devolucoes" }) {
   const devolucao = useDevolucao(devolucaoId);
   const navigate = Route.useNavigate();
 
@@ -158,6 +180,14 @@ function EditorDevolucao({ devolucaoId }: { devolucaoId: string }) {
   const [buscandoMaterial, setBuscandoMaterial] = useState(false);
   const [rmInput, setRmInput] = useState("");
   const [acaoSalvando, setAcaoSalvando] = useState<string | null>(null);
+  const codigoInputRef = useRef<HTMLInputElement>(null);
+  const [focarCodigo, setFocarCodigo] = useState(false);
+
+  useEffect(() => {
+    if (!focarCodigo) return;
+    codigoInputRef.current?.focus();
+    setFocarCodigo(false);
+  }, [focarCodigo]);
 
   // Descrição vem sempre da tabela real public.materiais (código tratado como TEXTO).
   useEffect(() => {
@@ -237,7 +267,8 @@ function EditorDevolucao({ devolucaoId }: { devolucaoId: string }) {
         .filter((v) => Number.isFinite(v.quantidade) && v.quantidade > 0),
     };
 
-    const acao = editandoId ? "item" : "adicionar";
+    const eraAdicao = !editandoId;
+    const acao = eraAdicao ? "adicionar" : "item";
     setAcaoSalvando(acao);
     try {
       const ok = editandoId
@@ -246,6 +277,7 @@ function EditorDevolucao({ devolucaoId }: { devolucaoId: string }) {
       if (!ok) return;
       toast.success(editandoId ? "Item atualizado" : "Item adicionado");
       limpar();
+      if (eraAdicao) setFocarCodigo(true);
     } finally {
       setAcaoSalvando(null);
     }
@@ -291,6 +323,16 @@ function EditorDevolucao({ devolucaoId }: { devolucaoId: string }) {
 
   return (
     <div className="mx-auto max-w-[1400px] space-y-6">
+      <button
+        type="button"
+        className="inline-flex items-center gap-2 text-sm font-semibold text-muted-foreground transition-colors hover:text-foreground"
+        onClick={() => {
+          definirDevolucaoAtiva(null);
+          void navigate({ to: origem === "devolucoes" ? "/devolucoes" : "/nova-devolucao" });
+        }}
+      >
+        <ArrowLeft className="h-4 w-4" /> Voltar
+      </button>
       {/* Cabeçalho da devolução */}
       <Panel bodyClassName="p-5">
         <div className="flex flex-wrap items-center justify-between gap-4">
@@ -343,6 +385,7 @@ function EditorDevolucao({ devolucaoId }: { devolucaoId: string }) {
                 <div className="relative">
                   <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                   <input
+                    ref={codigoInputRef}
                     className={`${inputClass} pl-9`}
                     placeholder="Ex.: 123456"
                     value={codigo}

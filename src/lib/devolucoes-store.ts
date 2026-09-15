@@ -47,6 +47,7 @@ const ALIAS_VOLUME = {
 let state: Devolucao[] = [];
 let carregando = false;
 let carregado = false;
+let devolucaoAtivaId: string | null = null;
 const listeners = new Set<() => void>();
 
 function emit() {
@@ -225,6 +226,14 @@ export function useRecarregarDevolucoes() {
 }
 
 export const podeEditar = (d: Devolucao) => d.status !== "finalizada";
+
+export function definirDevolucaoAtiva(id: string | null) {
+  devolucaoAtivaId = id;
+}
+
+export function obterDevolucaoAtivaId() {
+  return devolucaoAtivaId;
+}
 
 /* ------------------------------------------------------------------ */
 /* Mutações                                                            */
@@ -449,6 +458,7 @@ export async function finalizarDevolucao(devolucaoId: string): Promise<boolean> 
     if (status !== "finalizada") {
       throw new Error(`A devolução não foi finalizada no banco (status atual: ${status ?? "desconhecido"}).`);
     }
+    if (devolucaoAtivaId === devolucaoId) devolucaoAtivaId = null;
     await recarregar();
     return true;
   }));

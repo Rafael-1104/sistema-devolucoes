@@ -114,7 +114,7 @@ function Devolucoes() {
         >
           <DevolucoesTable
             data={filtradas}
-            onView={(d) => void navigate({ to: "/nova-devolucao", search: { id: d.id } })}
+            onView={(d) => void navigate({ to: "/nova-devolucao", search: { id: d.id, origem: "devolucoes" } })}
             onReport={(d) => void navigate({ to: "/relatorios", search: { id: d.id } })}
           />
         </Panel>

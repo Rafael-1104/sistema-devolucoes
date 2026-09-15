@@ -116,7 +116,7 @@ function Relatorios() {
                   <div className="space-y-1 text-right text-xs text-muted-foreground">
                     <StatusBadge status={devolucao.status} />
                     <p>Criada por {devolucao.criadoPor}</p>
-                    <p>Em {formatarDataHora(devolucao.criadoEm)}</p>
+                    <p>Data/Hora: {formatarDataHora(devolucao.rmVinculadaEm)}</p>
                     <p>RM vinculada em {formatarDataHora(devolucao.rmVinculadaEm)}</p>
                   </div>
                 </div>
@@ -196,7 +196,7 @@ function FolhaImpressao({ devolucao }: { devolucao: Devolucao }) {
               <strong>Criada por:</strong> {devolucao.criadoPor}
             </td>
             <td style={{ border: "none", padding: 0 }}>
-              <strong>Data:</strong> {formatarDataHora(devolucao.criadoEm)}
+              <strong>Data/Hora:</strong> {formatarDataHora(devolucao.rmVinculadaEm)}
             </td>
           </tr>
         </tbody>
