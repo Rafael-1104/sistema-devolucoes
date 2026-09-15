@@ -49,8 +49,10 @@ let carregando = false;
 let carregado = false;
 let devolucaoAtivaId: string | null = null;
 let focoCodigoPendente = false;
+let focoPalavra1Pendente = false;
 const listeners = new Set<() => void>();
 const focoCodigoListeners = new Set<() => void>();
+const focoPalavra1Listeners = new Set<() => void>();
 
 function emit() {
   for (const l of listeners) l();
@@ -255,6 +257,28 @@ export function useFocoCodigoSolicitado() {
       return () => focoCodigoListeners.delete(listener);
     },
     () => focoCodigoPendente,
+    () => false,
+  );
+}
+
+export function solicitarFocoPalavra1() {
+  focoPalavra1Pendente = true;
+  for (const listener of focoPalavra1Listeners) listener();
+}
+
+export function consumirSolicitacaoFocoPalavra1() {
+  if (!focoPalavra1Pendente) return;
+  focoPalavra1Pendente = false;
+  for (const listener of focoPalavra1Listeners) listener();
+}
+
+export function useFocoPalavra1Solicitado() {
+  return useSyncExternalStore(
+    (listener) => {
+      focoPalavra1Listeners.add(listener);
+      return () => focoPalavra1Listeners.delete(listener);
+    },
+    () => focoPalavra1Pendente,
     () => false,
   );
 }

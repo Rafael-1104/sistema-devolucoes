@@ -5,6 +5,7 @@ import { Search, Eraser, Loader2, Copy, Check } from "lucide-react";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { Panel, Field } from "@/components/ui-kit/PageSection";
 import { buscarMaterialPorCodigo, buscarMateriaisPorDescricao, type Material } from "@/lib/materiais";
+import { consumirSolicitacaoFocoPalavra1, useFocoPalavra1Solicitado } from "@/lib/devolucoes-store";
 
 export const Route = createFileRoute("/consulta-codigo")({
   head: () => ({
@@ -38,6 +39,15 @@ function ConsultaCodigo() {
   const [erro, setErro] = useState<string | null>(null);
   const [codigoCopiado, setCodigoCopiado] = useState<string | null>(null);
   const copiaTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const palavra1Ref = useRef<HTMLInputElement>(null);
+  const focoPalavra1Solicitado = useFocoPalavra1Solicitado();
+
+  useEffect(() => {
+    if (!focoPalavra1Solicitado) return;
+    palavra1Ref.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+    palavra1Ref.current?.focus({ preventScroll: true });
+    consumirSolicitacaoFocoPalavra1();
+  }, [focoPalavra1Solicitado]);
 
   useEffect(() => {
     return () => {
@@ -128,6 +138,7 @@ function ConsultaCodigo() {
             <div className="grid gap-4 md:grid-cols-[1fr_1fr_auto] md:items-end">
             <Field label="Palavra 1">
               <input
+                ref={palavra1Ref}
                 className={inputClass}
                 value={palavra1}
                 onChange={(e) => setPalavra1(e.target.value)}

@@ -10,7 +10,13 @@ import {
 import { useEffect, type ReactNode } from "react";
 import { useState } from "react";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { definirDevolucaoAtiva, obterDevolucaoAtivaId, solicitarFocoCodigo, useDevolucoes } from "@/lib/devolucoes-store";
+import {
+  definirDevolucaoAtiva,
+  obterDevolucaoAtivaId,
+  solicitarFocoCodigo,
+  solicitarFocoPalavra1,
+  useDevolucoes,
+} from "@/lib/devolucoes-store";
 
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
@@ -152,8 +158,15 @@ function AtalhoDevolucaoAtiva() {
 
   useEffect(() => {
     function tratarF2(event: KeyboardEvent) {
-      if (event.key !== "F2") return;
       if (document.querySelector('[role="dialog"][data-state="open"]')) return;
+      if (event.key === "F4") {
+        event.preventDefault();
+        event.stopPropagation();
+        solicitarFocoPalavra1();
+        void router.navigate({ to: "/consulta-codigo" });
+        return;
+      }
+      if (event.key !== "F2") return;
       event.preventDefault();
 
       const idAtivo = obterDevolucaoAtivaId();
