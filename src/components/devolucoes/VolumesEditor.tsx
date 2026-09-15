@@ -1,4 +1,12 @@
 import { useEffect, useState } from "react";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 export interface VolumeRascunho {
   numero: number;
@@ -26,6 +34,10 @@ export function VolumesEditor({
   erro?: string | undefined;
 }) {
   const [quantidadeCampos, setQuantidadeCampos] = useState(String(volumes.length));
+  const [reducaoPendente, setReducaoPendente] = useState<{
+    quantidade: number;
+    removidos: VolumeRascunho[];
+  } | null>(null);
 
   // Mantém o campo sincronizado quando a lista muda por outra ação (editar item, etc.)
   useEffect(() => {
@@ -55,15 +67,21 @@ export function VolumesEditor({
     const removidos = volumes.slice(n);
     const temDados = removidos.some(preenchido);
     if (temDados) {
-      const ok = window.confirm(
-        `Os volumes que serão removidos possuem quantidades preenchidas (${removidos.filter(preenchido).length}). Deseja continuar?`,
-      );
-      if (!ok) {
-        setQuantidadeCampos(String(volumes.length));
-        return;
-      }
+      setReducaoPendente({ quantidade: n, removidos });
+      return;
     }
     onChange(renumerar(volumes.slice(0, n)));
+  }
+
+  function cancelarReducao() {
+    setQuantidadeCampos(String(volumes.length));
+    setReducaoPendente(null);
+  }
+
+  function continuarReducao() {
+    if (!reducaoPendente) return;
+    onChange(renumerar(volumes.slice(0, reducaoPendente.quantidade)));
+    setReducaoPendente(null);
   }
 
   function alterar(index: number, quantidade: string) {
@@ -113,6 +131,31 @@ export function VolumesEditor({
         <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Quantidade total</span>
         <span className="text-base font-bold tabular-nums text-foreground">{somaVolumes(volumes)}</span>
       </div>
+
+      <Dialog
+        open={reducaoPendente !== null}
+        onOpenChange={(aberto) => {
+          if (!aberto) cancelarReducao();
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Reduzir quantidade de volumes?</DialogTitle>
+            <DialogDescription>
+              Você está reduzindo a quantidade de volumes de {volumes.length} para {reducaoPendente?.quantidade}. Os
+              dados dos volumes {reducaoPendente?.removidos.map((volume) => volume.numero).join(", ")} serão removidos.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <button type="button" className="inline-flex items-center justify-center rounded-lg border border-border px-4 py-2.5 text-sm font-semibold text-foreground transition-colors hover:border-primary/40 hover:bg-primary-soft" onClick={cancelarReducao}>
+              Cancelar
+            </button>
+            <button type="button" className="inline-flex items-center justify-center rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary-dark" onClick={continuarReducao}>
+              Continuar
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
