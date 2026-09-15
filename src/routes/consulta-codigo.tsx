@@ -4,7 +4,7 @@ import { Search, Eraser, Loader2, Copy, Check } from "lucide-react";
 
 import { AppLayout } from "@/components/layout/AppLayout";
 import { Panel, Field } from "@/components/ui-kit/PageSection";
-import { buscarMateriaisPorDescricao, type Material } from "@/lib/materiais";
+import { buscarMaterialPorCodigo, buscarMateriaisPorDescricao, type Material } from "@/lib/materiais";
 
 export const Route = createFileRoute("/consulta-codigo")({
   head: () => ({
@@ -30,6 +30,7 @@ const inputClass =
   "w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-primary";
 
 function ConsultaCodigo() {
+  const [codigo, setCodigo] = useState("");
   const [palavra1, setPalavra1] = useState("");
   const [palavra2, setPalavra2] = useState("");
   const [resultados, setResultados] = useState<Material[]>([]);
@@ -68,7 +69,8 @@ function ConsultaCodigo() {
 
   const termo1 = palavra1.trim();
   const termo2 = palavra2.trim();
-  const temBusca = termo1.length > 0 || termo2.length > 0;
+  const termoCodigo = codigo.trim();
+  const temBusca = termoCodigo.length > 0 || termo1.length > 0 || termo2.length > 0;
 
   useEffect(() => {
     if (!temBusca) {
@@ -81,11 +83,15 @@ function ConsultaCodigo() {
     let ativo = true;
     setCarregando(true);
     const timer = setTimeout(() => {
-      buscarMateriaisPorDescricao([termo1, termo2])
+      const consulta = termoCodigo
+        ? buscarMaterialPorCodigo(termoCodigo).then((material) => (material ? [material] : []))
+        : buscarMateriaisPorDescricao([termo1, termo2]);
+
+      consulta
         .then((lista) => {
           if (!ativo) return;
           setResultados(lista);
-          setErro(null);
+          setErro(termoCodigo && lista.length === 0 ? "Material não encontrado." : null);
         })
         .catch((e: unknown) => {
           if (!ativo) return;
@@ -101,7 +107,7 @@ function ConsultaCodigo() {
       ativo = false;
       clearTimeout(timer);
     };
-  }, [termo1, termo2, temBusca]);
+  }, [termoCodigo, termo1, termo2, temBusca]);
 
   return (
     <AppLayout
@@ -110,7 +116,16 @@ function ConsultaCodigo() {
     >
       <div className="mx-auto max-w-[1200px] space-y-5">
         <Panel title="Pesquisar material" description="A descrição deve conter todas as palavras informadas.">
-          <div className="grid gap-4 md:grid-cols-[1fr_1fr_auto] md:items-end">
+          <div className="space-y-4">
+            <Field label="Código do material">
+              <input
+                className={inputClass}
+                value={codigo}
+                onChange={(e) => setCodigo(e.target.value)}
+                placeholder="Digite o código exato"
+              />
+            </Field>
+            <div className="grid gap-4 md:grid-cols-[1fr_1fr_auto] md:items-end">
             <Field label="Palavra 1">
               <input
                 className={inputClass}
@@ -130,6 +145,7 @@ function ConsultaCodigo() {
             <button
               type="button"
               onClick={() => {
+                setCodigo("");
                 setPalavra1("");
                 setPalavra2("");
               }}
@@ -137,6 +153,7 @@ function ConsultaCodigo() {
             >
               <Eraser className="h-4 w-4" /> Limpar filtros
             </button>
+            </div>
           </div>
         </Panel>
 
@@ -149,7 +166,7 @@ function ConsultaCodigo() {
             <div className="flex flex-col items-center gap-2 px-6 py-14 text-center">
               <Search className="h-6 w-6 text-muted-foreground" />
               <p className="text-sm text-muted-foreground">
-                Digite uma palavra da descrição para iniciar a consulta.
+                Digite um código ou uma palavra da descrição para iniciar a consulta.
               </p>
             </div>
           ) : carregando ? (
@@ -160,7 +177,7 @@ function ConsultaCodigo() {
             <p className="px-6 py-10 text-center text-sm text-destructive">{erro}</p>
           ) : resultados.length === 0 ? (
             <p className="px-6 py-14 text-center text-sm text-muted-foreground">
-              Nenhum material encontrado.
+              {termoCodigo ? "Material não encontrado." : "Nenhum material encontrado."}
             </p>
           ) : (
             <div className="overflow-x-auto">
