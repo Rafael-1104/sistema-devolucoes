@@ -7,6 +7,7 @@ import {
   FileSpreadsheet,
   FileText,
   Hash,
+  Loader2,
   Plus,
   Search,
   Sparkles,
@@ -28,6 +29,7 @@ import { buscarMaterialPorCodigo } from "@/lib/materiais";
 import {
   adicionarItem,
   atualizarItem,
+  atualizarLoteItem,
   criarDevolucao,
   podeEditar,
   registrarCsvGerado,
@@ -71,14 +73,21 @@ function NovaDevolucao() {
   const navigate = Route.useNavigate();
   const devolucoes = useDevolucoes();
   const devolucao = useDevolucao(id);
+  const [iniciando, setIniciando] = useState(false);
 
   const emAberto = devolucoes.filter((d) => d.status !== "finalizada");
 
   async function iniciar() {
-    const nova = await criarDevolucao();
-    if (!nova) return;
-    toast.success(`Devolução ${nova.identificador} iniciada`);
-    void navigate({ to: "/nova-devolucao", search: { id: nova.id } });
+    if (iniciando) return;
+    setIniciando(true);
+    try {
+      const nova = await criarDevolucao();
+      if (!nova) return;
+      toast.success(`Devolução ${nova.identificador} iniciada`);
+      void navigate({ to: "/nova-devolucao", search: { id: nova.id } });
+    } finally {
+      setIniciando(false);
+    }
   }
 
   if (!devolucao) {
@@ -92,8 +101,9 @@ function NovaDevolucao() {
                 seguida você adiciona os materiais e volumes, gera o CSV para o ARECO e, depois, vincula o número da
                 RM devolvido pelo sistema.
               </p>
-              <button type="button" className={btnPrimary} onClick={() => void iniciar()}>
-                <Sparkles className="h-4 w-4" /> Iniciar nova devolução
+              <button type="button" className={btnPrimary} onClick={() => void iniciar()} disabled={iniciando}>
+                {iniciando ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                {iniciando ? "Salvando..." : "Iniciar nova devolução"}
               </button>
             </div>
           </Panel>
@@ -147,6 +157,7 @@ function EditorDevolucao({ devolucaoId }: { devolucaoId: string }) {
   const [materialEncontrado, setMaterialEncontrado] = useState<string | null>(null);
   const [buscandoMaterial, setBuscandoMaterial] = useState(false);
   const [rmInput, setRmInput] = useState("");
+  const [acaoSalvando, setAcaoSalvando] = useState<string | null>(null);
 
   // Descrição vem sempre da tabela real public.materiais (código tratado como TEXTO).
   useEffect(() => {
@@ -208,6 +219,7 @@ function EditorDevolucao({ devolucaoId }: { devolucaoId: string }) {
   }
 
   async function salvarItem() {
+    if (acaoSalvando) return;
     const proximosErros: typeof erros = {};
     if (!codigo.trim()) proximosErros.codigo = "Informe o código do material.";
     else if (buscandoMaterial) proximosErros.codigo = "Aguarde a consulta do material.";
@@ -225,35 +237,56 @@ function EditorDevolucao({ devolucaoId }: { devolucaoId: string }) {
         .filter((v) => Number.isFinite(v.quantidade) && v.quantidade > 0),
     };
 
-    if (editandoId) {
-      await atualizarItem(devolucaoId, editandoId, dados);
-      toast.success("Item atualizado");
-    } else {
-      await adicionarItem(devolucaoId, dados);
-      toast.success("Item adicionado");
+    const acao = editandoId ? "item" : "adicionar";
+    setAcaoSalvando(acao);
+    try {
+      const ok = editandoId
+        ? await atualizarItem(devolucaoId, editandoId, dados)
+        : await adicionarItem(devolucaoId, dados);
+      if (!ok) return;
+      toast.success(editandoId ? "Item atualizado" : "Item adicionado");
+      limpar();
+    } finally {
+      setAcaoSalvando(null);
     }
-    limpar();
   }
 
   async function gerarCsv() {
+    if (acaoSalvando) return;
     if (devolucao!.itens.length === 0) {
       toast.error("Adicione ao menos um item antes de gerar o CSV.");
       return;
     }
-    baixarCsv(`${devolucao!.identificador}.csv`, montarCsvAreco(devolucao!));
-    await registrarCsvGerado(devolucaoId);
-    toast.success("CSV gerado para importação no ARECO");
+    setAcaoSalvando("csv");
+    try {
+      baixarCsv(`${devolucao!.identificador}.csv`, montarCsvAreco(devolucao!));
+      const ok = await registrarCsvGerado(devolucaoId);
+      if (ok) toast.success("CSV gerado para importação no ARECO");
+    } finally {
+      setAcaoSalvando(null);
+    }
   }
 
   async function salvarRm() {
+    if (acaoSalvando) return;
     const valor = rmInput.trim();
     if (!valor) {
       toast.error("Informe o número da RM gerado pelo ARECO.");
       return;
     }
-    await vincularRm(devolucaoId, valor);
-    setRmInput("");
-    toast.success(`RM ${valor} vinculada à devolução`);
+    setAcaoSalvando("rm");
+    try {
+      const ok = await vincularRm(devolucaoId, valor);
+      if (!ok) return;
+      setRmInput("");
+      toast.success(`RM ${valor} vinculada à devolução`);
+    } finally {
+      setAcaoSalvando(null);
+    }
+  }
+
+  async function salvarLote(item: ItemDevolucao, novoLote: string) {
+    return atualizarLoteItem(item.id, novoLote);
   }
 
   return (
@@ -336,11 +369,25 @@ function EditorDevolucao({ devolucaoId }: { devolucaoId: string }) {
           </div>
 
           <div className="mt-6 flex flex-wrap gap-3 border-t border-border pt-5">
-            <button type="button" className={btnPrimary} onClick={() => void salvarItem()}>
-              <Plus className="h-4 w-4" /> {editandoId ? "Salvar alterações" : "Adicionar item"}
+            <button
+              type="button"
+              className={btnPrimary}
+              onClick={() => void salvarItem()}
+              disabled={acaoSalvando !== null}
+            >
+              {acaoSalvando === "item" || acaoSalvando === "adicionar" ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Plus className="h-4 w-4" />
+              )}
+              {acaoSalvando === "item" || acaoSalvando === "adicionar"
+                ? "Salvando..."
+                : editandoId
+                  ? "Salvar alterações"
+                  : "Adicionar item"}
             </button>
             {editandoId && (
-              <button type="button" className={btnGhost} onClick={limpar}>
+              <button type="button" className={btnGhost} onClick={limpar} disabled={acaoSalvando !== null}>
                 <X className="h-4 w-4" /> Cancelar edição
               </button>
             )}
@@ -353,8 +400,10 @@ function EditorDevolucao({ devolucaoId }: { devolucaoId: string }) {
           itens={devolucao.itens}
           readOnly={!editavel}
           onEdit={carregarItem}
-          onRemove={(item) => {
-            void removerItem(devolucaoId, item.id);
+          onSaveLote={salvarLote}
+          onRemove={async (item) => {
+            const ok = await removerItem(devolucaoId, item.id);
+            if (!ok) return;
             if (editandoId === item.id) limpar();
             toast.success("Item removido");
           }}
@@ -373,9 +422,22 @@ function EditorDevolucao({ devolucaoId }: { devolucaoId: string }) {
                 <span className="ml-2 font-semibold text-warning-foreground">· dados alterados desde a geração</span>
               )}
             </div>
-            <button type="button" className={btnPrimary} onClick={() => void gerarCsv()} disabled={!editavel}>
-              <FileSpreadsheet className="h-4 w-4" />
-              {devolucao.csvGeradoEm ? "Gerar CSV novamente" : "Gerar CSV para o ARECO"}
+            <button
+              type="button"
+              className={btnPrimary}
+              onClick={() => void gerarCsv()}
+              disabled={!editavel || acaoSalvando !== null}
+            >
+              {acaoSalvando === "csv" ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <FileSpreadsheet className="h-4 w-4" />
+              )}
+              {acaoSalvando === "csv"
+                ? "Salvando..."
+                : devolucao.csvGeradoEm
+                  ? "Gerar CSV novamente"
+                  : "Gerar CSV para o ARECO"}
             </button>
           </div>
         </Panel>
@@ -406,8 +468,18 @@ function EditorDevolucao({ devolucaoId }: { devolucaoId: string }) {
                     onChange={(e) => setRmInput(e.target.value)}
                   />
                 </Field>
-                <button type="button" className={btnGhost} onClick={() => void salvarRm()}>
-                  <Hash className="h-4 w-4" /> Vincular RM
+                <button
+                  type="button"
+                  className={btnGhost}
+                  onClick={() => void salvarRm()}
+                  disabled={acaoSalvando !== null}
+                >
+                  {acaoSalvando === "rm" ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Hash className="h-4 w-4" />
+                  )}
+                  {acaoSalvando === "rm" ? "Salvando..." : "Vincular RM"}
                 </button>
               </div>
             )}

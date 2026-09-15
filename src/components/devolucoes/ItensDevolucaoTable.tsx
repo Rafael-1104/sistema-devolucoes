@@ -177,7 +177,7 @@ export function ItensDevolucaoTable({
                 <LoteCell
                   key={`${item.id}:${item.lote}`}
                   item={item}
-                  readOnly={readOnly}
+                  {...(readOnly !== undefined ? { readOnly } : {})}
                   {...(onSaveLote ? { onSaveLote } : {})}
                 />
               </td>
