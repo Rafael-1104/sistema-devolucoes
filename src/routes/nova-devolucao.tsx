@@ -40,6 +40,7 @@ import {
   adicionarItem,
   atualizarItem,
   atualizarLoteItem,
+  consumirSolicitacaoFocoCodigo,
   criarDevolucao,
   definirDevolucaoAtiva,
   obterDevolucaoAtivaId,
@@ -47,6 +48,7 @@ import {
   registrarCsvGerado,
   removerItem,
   useDevolucao,
+  useFocoCodigoSolicitado,
   useDevolucoes,
   vincularRm,
 } from "@/lib/devolucoes-store";
@@ -196,12 +198,20 @@ function EditorDevolucao({ devolucaoId, origem }: { devolucaoId: string; origem?
   const [itemParaRolarId, setItemParaRolarId] = useState<string | null>(null);
   const [codigoSaiuCampo, setCodigoSaiuCampo] = useState(false);
   const [itensDuplicados, setItensDuplicados] = useState<ItemDevolucao[]>([]);
+  const focoCodigoSolicitado = useFocoCodigoSolicitado();
 
   useEffect(() => {
     if (!focarCodigo) return;
     codigoInputRef.current?.focus();
     setFocarCodigo(false);
   }, [focarCodigo]);
+
+  useEffect(() => {
+    if (!focoCodigoSolicitado || !devolucao) return;
+    codigoInputRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+    codigoInputRef.current?.focus({ preventScroll: true });
+    consumirSolicitacaoFocoCodigo();
+  }, [devolucao, focoCodigoSolicitado]);
 
   useEffect(() => {
     if (!editandoId) return;

@@ -48,7 +48,9 @@ let state: Devolucao[] = [];
 let carregando = false;
 let carregado = false;
 let devolucaoAtivaId: string | null = null;
+let focoCodigoPendente = false;
 const listeners = new Set<() => void>();
+const focoCodigoListeners = new Set<() => void>();
 
 function emit() {
   for (const l of listeners) l();
@@ -233,6 +235,28 @@ export function definirDevolucaoAtiva(id: string | null) {
 
 export function obterDevolucaoAtivaId() {
   return devolucaoAtivaId;
+}
+
+export function solicitarFocoCodigo() {
+  focoCodigoPendente = true;
+  for (const listener of focoCodigoListeners) listener();
+}
+
+export function consumirSolicitacaoFocoCodigo() {
+  if (!focoCodigoPendente) return;
+  focoCodigoPendente = false;
+  for (const listener of focoCodigoListeners) listener();
+}
+
+export function useFocoCodigoSolicitado() {
+  return useSyncExternalStore(
+    (listener) => {
+      focoCodigoListeners.add(listener);
+      return () => focoCodigoListeners.delete(listener);
+    },
+    () => focoCodigoPendente,
+    () => false,
+  );
 }
 
 /* ------------------------------------------------------------------ */

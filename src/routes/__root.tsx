@@ -8,6 +8,9 @@ import {
   Scripts,
 } from "@tanstack/react-router";
 import { useEffect, type ReactNode } from "react";
+import { useState } from "react";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { definirDevolucaoAtiva, obterDevolucaoAtivaId, solicitarFocoCodigo, useDevolucoes } from "@/lib/devolucoes-store";
 
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
@@ -131,9 +134,57 @@ function RootComponent() {
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
+        <AtalhoDevolucaoAtiva />
         {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
         <Outlet />
       </AuthProvider>
     </QueryClientProvider>
+  );
+}
+
+const btnPrimary =
+  "inline-flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground shadow-soft transition-colors hover:bg-primary-dark";
+
+function AtalhoDevolucaoAtiva() {
+  const router = useRouter();
+  const devolucoes = useDevolucoes();
+  const [mostrarSemAtiva, setMostrarSemAtiva] = useState(false);
+
+  useEffect(() => {
+    function tratarF2(event: KeyboardEvent) {
+      if (event.key !== "F2") return;
+      if (document.querySelector('[role="dialog"][data-state="open"]')) return;
+      event.preventDefault();
+
+      const idAtivo = obterDevolucaoAtivaId();
+      const ativa = devolucoes.find((devolucao) => devolucao.id === idAtivo);
+      if (!idAtivo || (ativa && ativa.status === "finalizada")) {
+        definirDevolucaoAtiva(null);
+        setMostrarSemAtiva(true);
+        return;
+      }
+
+      solicitarFocoCodigo();
+      void router.navigate({ to: "/nova-devolucao", search: { id: idAtivo } });
+    }
+
+    window.addEventListener("keydown", tratarF2);
+    return () => window.removeEventListener("keydown", tratarF2);
+  }, [devolucoes, router]);
+
+  return (
+    <Dialog open={mostrarSemAtiva} onOpenChange={setMostrarSemAtiva}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Nenhuma devolução em andamento</DialogTitle>
+          <DialogDescription>Não existe nenhuma devolução em andamento para continuar.</DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <button type="button" className={btnPrimary} onClick={() => setMostrarSemAtiva(false)}>
+            Fechar
+          </button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
