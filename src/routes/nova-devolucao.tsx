@@ -25,6 +25,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Panel, Field } from "@/components/ui-kit/PageSection";
+import { KeyboardShortcut } from "@/components/ui-kit/KeyboardShortcut";
 import { StatusBadge } from "@/components/ui-kit/StatusBadge";
 import { ItensDevolucaoTable } from "@/components/devolucoes/ItensDevolucaoTable";
 import { VolumesEditor, somaVolumes, type VolumeRascunho } from "@/components/devolucoes/VolumesEditor";
@@ -198,6 +199,7 @@ function EditorDevolucao({ devolucaoId, origem }: { devolucaoId: string; origem?
   const [itemParaRolarId, setItemParaRolarId] = useState<string | null>(null);
   const [codigoSaiuCampo, setCodigoSaiuCampo] = useState(false);
   const [itensDuplicados, setItensDuplicados] = useState<ItemDevolucao[]>([]);
+  const [itemParaRemover, setItemParaRemover] = useState<ItemDevolucao | null>(null);
   const focoCodigoSolicitado = useFocoCodigoSolicitado();
 
   useEffect(() => {
@@ -379,6 +381,21 @@ function EditorDevolucao({ devolucaoId, origem }: { devolucaoId: string; origem?
     return atualizarLoteItem(item.id, novoLote);
   }
 
+  async function confirmarRemocao() {
+    if (!itemParaRemover || !editavel || acaoSalvando) return;
+    const item = itemParaRemover;
+    setAcaoSalvando("remover");
+    try {
+      const ok = await removerItem(devolucaoId, item.id);
+      if (!ok) return;
+      if (editandoId === item.id) limpar();
+      setItemParaRemover(null);
+      toast.success("Item removido");
+    } finally {
+      setAcaoSalvando(null);
+    }
+  }
+
   return (
     <div className="mx-auto max-w-[1400px] space-y-6">
       <button
@@ -440,7 +457,7 @@ function EditorDevolucao({ devolucaoId, origem }: { devolucaoId: string; origem?
           >
             <div className="grid gap-6 lg:grid-cols-2">
             <div className="space-y-4">
-              <Field label="Código do material" error={erros.codigo}>
+              <Field label="Código do material" labelSuffix={<KeyboardShortcut>F2</KeyboardShortcut>} error={erros.codigo}>
                 <div className="relative">
                   <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                   <input
@@ -509,12 +526,7 @@ function EditorDevolucao({ devolucaoId, origem }: { devolucaoId: string; origem?
             else itemRefs.current.delete(id);
           }}
           onSaveLote={salvarLote}
-          onRemove={async (item) => {
-            const ok = await removerItem(devolucaoId, item.id);
-            if (!ok) return;
-            if (editandoId === item.id) limpar();
-            toast.success("Item removido");
-          }}
+          onRemove={setItemParaRemover}
         />
       </Panel>
 
@@ -646,6 +658,48 @@ function EditorDevolucao({ devolucaoId, origem }: { devolucaoId: string; origem?
           <DialogFooter className="gap-2 sm:gap-2">
             <button type="button" className={btnGhost} onClick={manterItemSeparado}>
               Adicionar separadamente
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={itemParaRemover !== null}
+        onOpenChange={(aberto) => {
+          if (!aberto && !acaoSalvando) setItemParaRemover(null);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Excluir item?</DialogTitle>
+            <DialogDescription>Você deseja realmente excluir este item?</DialogDescription>
+          </DialogHeader>
+          {itemParaRemover && (
+            <div className="grid gap-2 rounded-lg border border-border bg-muted/30 p-4 text-sm sm:grid-cols-2">
+              <p><strong>Código:</strong> {itemParaRemover.materialCodigo}</p>
+              <p className="sm:col-span-2"><strong>Descrição:</strong> {itemParaRemover.descricao}</p>
+              <p><strong>Lote:</strong> {itemParaRemover.lote}</p>
+              <p><strong>Quantidade total:</strong> {totalItem(itemParaRemover)}</p>
+              <p><strong>Volumes:</strong> {itemParaRemover.volumes.length}</p>
+            </div>
+          )}
+          <DialogFooter className="gap-2 sm:gap-2">
+            <button
+              type="button"
+              className={btnGhost}
+              onClick={() => setItemParaRemover(null)}
+              disabled={acaoSalvando === "remover"}
+            >
+              Cancelar
+            </button>
+            <button
+              type="button"
+              className={btnPrimary}
+              onClick={() => void confirmarRemocao()}
+              disabled={acaoSalvando !== null}
+            >
+              {acaoSalvando === "remover" && <Loader2 className="h-4 w-4 animate-spin" />}
+              {acaoSalvando === "remover" ? "Excluindo..." : "Excluir item"}
             </button>
           </DialogFooter>
         </DialogContent>

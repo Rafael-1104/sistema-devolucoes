@@ -133,7 +133,6 @@ export function ItensDevolucaoTable({
   onSaveLote?: (item: ItemDevolucao, lote: string) => Promise<boolean>;
   onItemRef?: (id: string, element: HTMLTableRowElement | null) => void;
 }) {
-  const [removendoId, setRemovendoId] = useState<string | null>(null);
   const [codigoCopiado, setCodigoCopiado] = useState<string | null>(null);
   const copiaTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -149,16 +148,6 @@ export function ItensDevolucaoTable({
     setCodigoCopiado(codigo);
     if (copiaTimer.current) clearTimeout(copiaTimer.current);
     copiaTimer.current = setTimeout(() => setCodigoCopiado(null), 1800);
-  }
-
-  async function remover(item: ItemDevolucao) {
-    if (removendoId) return;
-    setRemovendoId(item.id);
-    try {
-      await onRemove?.(item);
-    } finally {
-      setRemovendoId(null);
-    }
   }
 
   return (
@@ -233,16 +222,11 @@ export function ItensDevolucaoTable({
                     </button>
                     <button
                       type="button"
-                      onClick={() => void remover(item)}
-                      disabled={removendoId !== null}
+                      onClick={() => onRemove?.(item)}
                       title="Remover item"
-                      className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-muted-foreground transition-colors hover:border-destructive/40 hover:bg-destructive/10 hover:text-destructive disabled:cursor-not-allowed disabled:opacity-50"
+                      className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-muted-foreground transition-colors hover:border-destructive/40 hover:bg-destructive/10 hover:text-destructive"
                     >
-                      {removendoId === item.id ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <Trash2 className="h-4 w-4" />
-                      )}
+                      <Trash2 className="h-4 w-4" />
                     </button>
                   </div>
                 </td>

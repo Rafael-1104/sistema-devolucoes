@@ -34,12 +34,14 @@ export function Panel({
 
 export function Field({
   label,
+  labelSuffix,
   hint,
   error,
   className,
   children,
 }: {
   label: string;
+  labelSuffix?: ReactNode | undefined;
   hint?: string | undefined;
   error?: string | undefined;
   className?: string | undefined;
@@ -47,7 +49,10 @@ export function Field({
 }) {
   return (
     <div className={cn("space-y-1.5", className)}>
-      <label className="block text-xs font-semibold text-foreground">{label}</label>
+      <label className="flex items-center justify-between gap-3 text-xs font-semibold text-foreground">
+        <span>{label}</span>
+        {labelSuffix}
+      </label>
       {children}
       {error ? (
         <p className="text-xs text-destructive">{error}</p>

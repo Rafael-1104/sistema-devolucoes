@@ -4,6 +4,7 @@ import { Search, Eraser, Loader2, Copy, Check } from "lucide-react";
 
 import { AppLayout } from "@/components/layout/AppLayout";
 import { Panel, Field } from "@/components/ui-kit/PageSection";
+import { KeyboardShortcut } from "@/components/ui-kit/KeyboardShortcut";
 import { buscarMaterialPorCodigo, buscarMateriaisPorDescricao, type Material } from "@/lib/materiais";
 import { consumirSolicitacaoFocoPalavra1, useFocoPalavra1Solicitado } from "@/lib/devolucoes-store";
 
@@ -136,7 +137,7 @@ function ConsultaCodigo() {
               />
             </Field>
             <div className="grid gap-4 md:grid-cols-[1fr_1fr_auto] md:items-end">
-            <Field label="Palavra 1">
+            <Field label="Palavra 1" labelSuffix={<KeyboardShortcut>F4</KeyboardShortcut>}>
               <input
                 ref={palavra1Ref}
                 className={inputClass}
