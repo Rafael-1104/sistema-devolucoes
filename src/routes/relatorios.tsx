@@ -4,6 +4,7 @@ import { createPortal } from "react-dom";
 import { AlertTriangle, CheckCircle2, FileText, Printer } from "lucide-react";
 import { toast } from "sonner";
 import { AppLayout } from "@/components/layout/AppLayout";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Panel, Field } from "@/components/ui-kit/PageSection";
 import { StatusBadge } from "@/components/ui-kit/StatusBadge";
 import { ItensDevolucaoTable } from "@/components/devolucoes/ItensDevolucaoTable";
@@ -46,6 +47,8 @@ function Relatorios() {
   const disponiveis = devolucoes.filter((d) => d.rm !== null);
   const [selecionada, setSelecionada] = useState<string>(id ?? "");
   const [previa, setPrevia] = useState(false);
+  const [confirmacaoFinalizacaoAberta, setConfirmacaoFinalizacaoAberta] = useState(false);
+  const [finalizandoDevolucaoEmAndamento, setFinalizandoDevolucaoEmAndamento] = useState(false);
 
   useEffect(() => {
     if (id) {
@@ -57,9 +60,23 @@ function Relatorios() {
   const devolucao = disponiveis.find((d) => d.id === selecionada) ?? null;
 
   async function finalizar() {
-    if (!devolucao) return;
-    const ok = await finalizarDevolucao(devolucao.id);
-    if (ok) toast.success(`Devolução ${devolucao.identificador} finalizada`);
+    if (!devolucao || finalizandoDevolucaoEmAndamento) return;
+
+    setFinalizandoDevolucaoEmAndamento(true);
+    try {
+      const ok = await finalizarDevolucao(devolucao.id);
+      if (!ok) {
+        toast.error("Não foi possível finalizar a devolução.");
+        return;
+      }
+      toast.success(`Devolução ${devolucao.identificador} finalizada`);
+      setConfirmacaoFinalizacaoAberta(false);
+    } catch (erro) {
+      const mensagem = erro instanceof Error ? erro.message : "Não foi possível finalizar a devolução.";
+      toast.error(mensagem);
+    } finally {
+      setFinalizandoDevolucaoEmAndamento(false);
+    }
   }
 
   return (
@@ -151,12 +168,64 @@ function Relatorios() {
                   <p className="text-sm text-muted-foreground">
                     Confira a prévia acima e finalize para bloquear novas edições.
                   </p>
-                  <button type="button" className={btnPrimary} onClick={() => void finalizar()}>
+                  <button
+                    type="button"
+                    className={btnPrimary}
+                    onClick={() => setConfirmacaoFinalizacaoAberta(true)}
+                    disabled={finalizandoDevolucaoEmAndamento}
+                  >
                     <CheckCircle2 className="h-4 w-4" /> Finalizar devolução
                   </button>
                 </div>
               )}
             </Panel>
+
+            <Dialog open={confirmacaoFinalizacaoAberta} onOpenChange={(aberto) => {
+              if (!aberto) setConfirmacaoFinalizacaoAberta(false);
+            }}>
+              <DialogContent className="sm:max-w-md">
+                <DialogHeader>
+                  <DialogTitle>Finalizar devolução?</DialogTitle>
+                  <DialogDescription>
+                    Tem certeza de que deseja finalizar esta devolução? Após a finalização, os dados não poderão mais ser alterados.
+                  </DialogDescription>
+                </DialogHeader>
+
+                <div className="space-y-2 rounded-md border border-border bg-muted/20 p-3 text-sm text-foreground">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-muted-foreground">Devolução:</span>
+                    <strong>ID - {devolucao.identificador}</strong>
+                  </div>
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-muted-foreground">RM:</span>
+                    <strong>{devolucao.rm ?? "—"}</strong>
+                  </div>
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-muted-foreground">Itens:</span>
+                    <strong>{devolucao.itens.length}</strong>
+                  </div>
+                </div>
+
+                <DialogFooter className="mt-2">
+                  <button
+                    type="button"
+                    className={btnGhost}
+                    onClick={() => setConfirmacaoFinalizacaoAberta(false)}
+                    disabled={finalizandoDevolucaoEmAndamento}
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="button"
+                    className={btnPrimary}
+                    onClick={() => void finalizar()}
+                    disabled={finalizandoDevolucaoEmAndamento}
+                  >
+                    {finalizandoDevolucaoEmAndamento ? "Finalizando..." : "Finalizar devolução"}
+                  </button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
 
             <FolhaImpressao devolucao={devolucao} />
           </>
