@@ -21,6 +21,27 @@ const lerTempoConfigurado = (nome: string, padrao: number) => {
 const INACTIVITY_TIMEOUT = lerTempoConfigurado("VITE_INACTIVITY_TIMEOUT_MS", 2 * 60 * 60 * 1000);
 const WARNING_TIME = lerTempoConfigurado("VITE_WARNING_TIME_MS", 5 * 60 * 1000);
 const ACTIVITY_THROTTLE_MS = 250;
+const STORAGE_KEY_LAST_ACTIVITY = "sistema-devolucoes-last-activity";
+
+const lerUltimaAtividadePersistida = () => {
+  if (typeof window === "undefined") return null;
+
+  const valor = window.localStorage.getItem(STORAGE_KEY_LAST_ACTIVITY);
+  if (!valor) return null;
+
+  const timestamp = Number(valor);
+  return Number.isFinite(timestamp) && timestamp > 0 ? timestamp : null;
+};
+
+const salvarUltimaAtividadePersistida = (timestamp: number) => {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(STORAGE_KEY_LAST_ACTIVITY, String(timestamp));
+};
+
+const limparUltimaAtividadePersistida = () => {
+  if (typeof window === "undefined") return;
+  window.localStorage.removeItem(STORAGE_KEY_LAST_ACTIVITY);
+};
 
 export interface PerfilUsuario {
   nome: string | null;
@@ -80,11 +101,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     encerrandoSessaoRef.current = true;
     limparTimersInatividade();
+    limparUltimaAtividadePersistida();
 
     try {
       await supabase.auth.signOut();
     } finally {
       encerrandoSessaoRef.current = false;
+      if (typeof window !== "undefined" && window.location.pathname !== "/login") {
+        window.location.replace("/login");
+      }
     }
   }, [limparTimersInatividade, sessao]);
 
@@ -121,6 +146,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     ultimaAtividadeRef.current = agora;
+    salvarUltimaAtividadePersistida(agora);
     setMostrarAvisoInatividade(false);
     agendarTimersInatividade();
   }, [agendarTimersInatividade, sessao]);
@@ -152,10 +178,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    ultimaAtividadeRef.current = Date.now();
+    const ultimoTimestampPersistido = lerUltimaAtividadePersistida();
+    const agora = Date.now();
+
+    if (ultimoTimestampPersistido) {
+      ultimaAtividadeRef.current = ultimoTimestampPersistido;
+
+      if (agora - ultimoTimestampPersistido >= INACTIVITY_TIMEOUT) {
+        void encerrarSessaoPorInatividade();
+        return;
+      }
+    } else {
+      ultimaAtividadeRef.current = agora;
+      salvarUltimaAtividadePersistida(ultimaAtividadeRef.current);
+    }
+
     setMostrarAvisoInatividade(false);
     agendarTimersInatividade();
-  }, [agendarTimersInatividade, limparTimersInatividade, sessao]);
+  }, [agendarTimersInatividade, limparTimersInatividade, sessao, encerrarSessaoPorInatividade]);
 
   useEffect(() => {
     if (!sessao) return;
@@ -252,6 +292,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const sair = useCallback(async () => {
     encerrandoSessaoRef.current = true;
     limparTimersInatividade();
+    limparUltimaAtividadePersistida();
     try {
       await supabase.auth.signOut();
       setPerfil(null);
