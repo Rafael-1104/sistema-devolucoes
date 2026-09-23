@@ -9,6 +9,7 @@ import {
   Search,
   PlugZap,
   LogOut,
+  History,
   type LucideIcon,
 } from "lucide-react";
 
@@ -31,7 +32,10 @@ export const navGroups: Group[] = [
   },
   {
     title: "Consulta",
-    items: [{ label: "Consulta de Código", to: "/consulta-codigo", icon: Search }],
+    items: [
+      { label: "Consulta de Código", to: "/consulta-codigo", icon: Search },
+      { label: "Histórico de Material", to: "/historico-material", icon: History },
+    ],
   },
   {
     title: "Documentos",

@@ -14,6 +14,7 @@ import { Route as ConfiguracoesRouteImport } from './routes/configuracoes'
 import { Route as ConsultaCodigoRouteImport } from './routes/consulta-codigo'
 import { Route as DevolucoesRouteImport } from './routes/devolucoes'
 import { Route as DiagnosticoRouteImport } from './routes/diagnostico'
+import { Route as HistoricoMaterialRouteImport } from './routes/historico-material'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as NovaDevolucaoRouteImport } from './routes/nova-devolucao'
 import { Route as RelatoriosRouteImport } from './routes/relatorios'
@@ -44,6 +45,11 @@ const DiagnosticoRoute = DiagnosticoRouteImport.update({
   path: '/diagnostico',
   getParentRoute: () => rootRouteImport,
 } as any)
+const HistoricoMaterialRoute = HistoricoMaterialRouteImport.update({
+  id: '/historico-material',
+  path: '/historico-material',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
   path: '/login',
@@ -71,6 +77,7 @@ export interface FileRoutesByFullPath {
   '/consulta-codigo': typeof ConsultaCodigoRoute
   '/devolucoes': typeof DevolucoesRoute
   '/diagnostico': typeof DiagnosticoRoute
+  '/historico-material': typeof HistoricoMaterialRoute
   '/login': typeof LoginRoute
   '/nova-devolucao': typeof NovaDevolucaoRoute
   '/relatorios': typeof RelatoriosRoute
@@ -82,6 +89,7 @@ export interface FileRoutesByTo {
   '/consulta-codigo': typeof ConsultaCodigoRoute
   '/devolucoes': typeof DevolucoesRoute
   '/diagnostico': typeof DiagnosticoRoute
+  '/historico-material': typeof HistoricoMaterialRoute
   '/login': typeof LoginRoute
   '/nova-devolucao': typeof NovaDevolucaoRoute
   '/relatorios': typeof RelatoriosRoute
@@ -94,6 +102,7 @@ export interface FileRoutesById {
   '/consulta-codigo': typeof ConsultaCodigoRoute
   '/devolucoes': typeof DevolucoesRoute
   '/diagnostico': typeof DiagnosticoRoute
+  '/historico-material': typeof HistoricoMaterialRoute
   '/login': typeof LoginRoute
   '/nova-devolucao': typeof NovaDevolucaoRoute
   '/relatorios': typeof RelatoriosRoute
@@ -107,6 +116,7 @@ export interface FileRouteTypes {
     | '/consulta-codigo'
     | '/devolucoes'
     | '/diagnostico'
+    | '/historico-material'
     | '/login'
     | '/nova-devolucao'
     | '/relatorios'
@@ -118,6 +128,7 @@ export interface FileRouteTypes {
     | '/consulta-codigo'
     | '/devolucoes'
     | '/diagnostico'
+    | '/historico-material'
     | '/login'
     | '/nova-devolucao'
     | '/relatorios'
@@ -129,6 +140,7 @@ export interface FileRouteTypes {
     | '/consulta-codigo'
     | '/devolucoes'
     | '/diagnostico'
+    | '/historico-material'
     | '/login'
     | '/nova-devolucao'
     | '/relatorios'
@@ -141,6 +153,7 @@ export interface RootRouteChildren {
   ConsultaCodigoRoute: typeof ConsultaCodigoRoute
   DevolucoesRoute: typeof DevolucoesRoute
   DiagnosticoRoute: typeof DiagnosticoRoute
+  HistoricoMaterialRoute: typeof HistoricoMaterialRoute
   LoginRoute: typeof LoginRoute
   NovaDevolucaoRoute: typeof NovaDevolucaoRoute
   RelatoriosRoute: typeof RelatoriosRoute
@@ -184,6 +197,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DiagnosticoRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/historico-material': {
+      id: '/historico-material'
+      path: '/historico-material'
+      fullPath: '/historico-material'
+      preLoaderRoute: typeof HistoricoMaterialRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/login': {
       id: '/login'
       path: '/login'
@@ -221,6 +241,7 @@ const rootRouteChildren: RootRouteChildren = {
   ConsultaCodigoRoute: ConsultaCodigoRoute,
   DevolucoesRoute: DevolucoesRoute,
   DiagnosticoRoute: DiagnosticoRoute,
+  HistoricoMaterialRoute: HistoricoMaterialRoute,
   LoginRoute: LoginRoute,
   NovaDevolucaoRoute: NovaDevolucaoRoute,
   RelatoriosRoute: RelatoriosRoute,
