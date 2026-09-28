@@ -3,7 +3,13 @@ import { useNavigate } from "@tanstack/react-router";
 import { useAuth } from "@/lib/auth";
 import { useTheme } from "@/lib/theme";
 
-export function Header({ title, subtitle }: { title: string; subtitle?: string | undefined }) {
+export function Header({
+  title,
+  subtitle,
+}: {
+  title: string;
+  subtitle?: string | undefined;
+}) {
   const { nomeExibicao, iniciais, perfil, usuario, sair } = useAuth();
   const { theme, setTheme } = useTheme();
   const navigate = useNavigate();
@@ -15,7 +21,7 @@ export function Header({ title, subtitle }: { title: string; subtitle?: string |
   }
 
   return (
-    <header className="fixed inset-x-0 top-0 z-20 h-16 border-b border-border bg-card lg:left-[260px]">
+    <header className="fixed inset-x-0 top-0 z-20 h-16 border-b border-border bg-card lg:left-[var(--sidebar-width)]">
       <div className="flex h-full items-center justify-between gap-4 px-5 lg:px-8">
         <div className="min-w-0">
           <h1 className="truncate text-base font-semibold text-foreground">{title}</h1>
