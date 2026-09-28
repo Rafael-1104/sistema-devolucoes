@@ -1,4 +1,4 @@
-import { Bell, LogOut, MoonStar, SunMedium } from "lucide-react";
+import { LogOut, MoonStar, SunMedium } from "lucide-react";
 import { useNavigate } from "@tanstack/react-router";
 import { useAuth } from "@/lib/auth";
 import { useTheme } from "@/lib/theme";
@@ -23,14 +23,6 @@ export function Header({ title, subtitle }: { title: string; subtitle?: string |
         </div>
 
         <div className="flex items-center gap-3">
-          <button
-            type="button"
-            aria-label="Notificações"
-            className="hidden h-9 w-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground sm:flex"
-          >
-            <Bell className="h-[18px] w-[18px]" />
-          </button>
-
           <div
             role="group"
             aria-label="Seleção de tema"

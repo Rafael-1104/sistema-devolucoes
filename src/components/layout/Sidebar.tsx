@@ -4,10 +4,7 @@ import {
   PackagePlus,
   PackageSearch,
   FileText,
-  Users,
-  Settings,
   Search,
-  PlugZap,
   LogOut,
   History,
   type LucideIcon,
@@ -40,14 +37,6 @@ export const navGroups: Group[] = [
   {
     title: "Documentos",
     items: [{ label: "Relatórios", to: "/relatorios", icon: FileText }],
-  },
-  {
-    title: "Administração",
-    items: [
-      { label: "Usuários", to: "/usuarios", icon: Users },
-      { label: "Configurações", to: "/configuracoes", icon: Settings },
-      { label: "Diagnóstico", to: "/diagnostico", icon: PlugZap },
-    ],
   },
 ];
 
