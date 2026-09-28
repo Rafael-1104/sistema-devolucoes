@@ -21,6 +21,21 @@ import {
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
 import { AuthProvider } from "../lib/auth";
+import { ThemeProvider } from "../lib/theme";
+
+const themeScript = `
+  (function() {
+    try {
+      const storedTheme = localStorage.getItem("theme");
+      const theme = storedTheme === "light" || storedTheme === "dark" ? storedTheme : "light";
+      document.documentElement.classList.toggle("dark", theme === "dark");
+      document.documentElement.style.colorScheme = theme;
+    } catch (error) {
+      document.documentElement.classList.remove("dark");
+      document.documentElement.style.colorScheme = "light";
+    }
+  })();
+`;
 
 function NotFoundComponent() {
   return (
@@ -124,6 +139,7 @@ function RootShell({ children }: { children: ReactNode }) {
   return (
     <html lang="pt-BR" translate="no" className="notranslate">
       <head>
+        <script dangerouslySetInnerHTML={{ __html: themeScript }} />
         <HeadContent />
       </head>
       <body>
@@ -139,11 +155,13 @@ function RootComponent() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <AuthProvider>
-        <AtalhoDevolucaoAtiva />
-        {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
-        <Outlet />
-      </AuthProvider>
+      <ThemeProvider>
+        <AuthProvider>
+          <AtalhoDevolucaoAtiva />
+          {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
+          <Outlet />
+        </AuthProvider>
+      </ThemeProvider>
     </QueryClientProvider>
   );
 }

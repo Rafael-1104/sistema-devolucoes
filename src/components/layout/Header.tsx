@@ -1,10 +1,13 @@
-import { LogOut, Bell } from "lucide-react";
+import { Bell, LogOut, MoonStar, SunMedium } from "lucide-react";
 import { useNavigate } from "@tanstack/react-router";
 import { useAuth } from "@/lib/auth";
+import { useTheme } from "@/lib/theme";
 
 export function Header({ title, subtitle }: { title: string; subtitle?: string | undefined }) {
   const { nomeExibicao, iniciais, perfil, usuario, sair } = useAuth();
+  const { theme, setTheme } = useTheme();
   const navigate = useNavigate();
+  const isDark = theme === "dark";
 
   async function sairAgora() {
     await sair();
@@ -27,6 +30,43 @@ export function Header({ title, subtitle }: { title: string; subtitle?: string |
           >
             <Bell className="h-[18px] w-[18px]" />
           </button>
+
+          <div
+            role="group"
+            aria-label="Seleção de tema"
+            className="flex items-center gap-1 rounded-full border border-border bg-muted/70 p-1 shadow-sm"
+          >
+            <button
+              type="button"
+              onClick={() => setTheme("light")}
+              aria-label="Ativar modo claro"
+              aria-pressed={!isDark}
+              title="Modo claro"
+              className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1.5 text-[11px] font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background ${
+                !isDark
+                  ? "bg-background text-foreground shadow-sm ring-1 ring-border"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <SunMedium className="h-3.5 w-3.5" />
+              <span>Claro</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setTheme("dark")}
+              aria-label="Ativar modo escuro"
+              aria-pressed={isDark}
+              title="Modo escuro"
+              className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1.5 text-[11px] font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background ${
+                isDark
+                  ? "bg-background text-foreground shadow-sm ring-1 ring-border"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <MoonStar className="h-3.5 w-3.5" />
+              <span>Escuro</span>
+            </button>
+          </div>
 
           <div className="flex items-center gap-3 border-l border-border pl-3">
             <div className="flex h-9 w-9 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-foreground">
