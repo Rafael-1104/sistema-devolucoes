@@ -489,7 +489,18 @@ export function VisaoGeralDashboard({ onAbrir }: { onAbrir: (id: string) => void
                     tickLine={false}
                     tick={{ fontSize: 11 }}
                   />
-                  <Tooltip formatter={(valor) => [`${valor} devoluções`, "Criadas"]} />
+                  <Tooltip
+                    formatter={(valor) => [`${valor} devoluções`, "Criadas"]}
+                    contentStyle={{
+                      backgroundColor: "var(--color-card)",
+                      borderColor: "var(--color-border)",
+                      borderRadius: "0.5rem",
+                      boxShadow: "var(--shadow-card)",
+                      color: "var(--color-card-foreground)",
+                    }}
+                    labelStyle={{ color: "var(--color-card-foreground)" }}
+                    itemStyle={{ color: "var(--color-card-foreground)" }}
+                  />
                   <Line
                     type="monotone"
                     dataKey="devolucoes"
