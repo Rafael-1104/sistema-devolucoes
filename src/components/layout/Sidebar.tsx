@@ -5,7 +5,6 @@ import {
   PackageSearch,
   FileText,
   Search,
-  LogOut,
   History,
   PanelLeftClose,
   PanelLeftOpen,
@@ -142,19 +141,6 @@ export function Sidebar({
           </div>
         ))}
       </nav>
-
-      <div className={cn("border-t border-sidebar-border py-3", collapsed ? "px-1.5" : "px-3")}>
-        <button
-          type="button"
-          className={cn(
-            "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-sidebar-muted transition-colors hover:bg-destructive/10 hover:text-destructive",
-            collapsed && "h-10 w-10 justify-center px-0",
-          )}
-        >
-          <LogOut className="h-[18px] w-[18px]" />
-          {!collapsed && "Sair"}
-        </button>
-      </div>
     </aside>
   );
 }
