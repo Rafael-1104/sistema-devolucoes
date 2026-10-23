@@ -83,6 +83,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const avisoRef = useRef<number | null>(null);
   const ultimaAtividadeRef = useRef(Date.now());
   const encerrandoSessaoRef = useRef(false);
+  const autenticandoRef = useRef(false);
 
   const limparTimersInatividade = useCallback(() => {
     if (timeoutRef.current !== null) {
@@ -160,7 +161,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setCarregando(false);
     });
 
-    const { data: sub } = supabase.auth.onAuthStateChange((_evento, novaSessao) => {
+    const { data: sub } = supabase.auth.onAuthStateChange((evento, novaSessao) => {
+      if (evento === "SIGNED_IN" && novaSessao && autenticandoRef.current) {
+        const agora = Date.now();
+        ultimaAtividadeRef.current = agora;
+        salvarUltimaAtividadePersistida(agora);
+      }
+      if (evento === "SIGNED_OUT") {
+        limparUltimaAtividadePersistida();
+      }
       setSessao(novaSessao);
       setCarregando(false);
     });
@@ -285,8 +294,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [usuario]);
 
   const entrar = useCallback(async (email: string, senha: string) => {
-    const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password: senha });
-    return { erro: error ? error.message : null };
+    autenticandoRef.current = true;
+    try {
+      const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password: senha });
+      return { erro: error ? error.message : null };
+    } finally {
+      autenticandoRef.current = false;
+    }
   }, []);
 
   const sair = useCallback(async () => {
