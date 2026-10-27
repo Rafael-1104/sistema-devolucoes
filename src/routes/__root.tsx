@@ -180,8 +180,7 @@ function AtalhoDevolucaoAtiva() {
       if (event.key === "F4") {
         event.preventDefault();
         event.stopPropagation();
-        solicitarFocoPalavra1();
-        void router.navigate({ to: "/consulta-codigo" });
+        void router.navigate({ to: "/consulta-codigo" }).then(() => solicitarFocoPalavra1());
         return;
       }
       if (event.key !== "F2") return;
@@ -195,8 +194,9 @@ function AtalhoDevolucaoAtiva() {
         return;
       }
 
-      solicitarFocoCodigo();
-      void router.navigate({ to: "/nova-devolucao", search: { id: idAtivo } });
+      void router
+        .navigate({ to: "/nova-devolucao", search: { id: idAtivo } })
+        .then(() => solicitarFocoCodigo());
     }
 
     window.addEventListener("keydown", tratarF2);
