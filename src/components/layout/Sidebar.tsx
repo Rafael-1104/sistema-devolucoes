@@ -41,13 +41,7 @@ export const navGroups: Group[] = [
   },
 ];
 
-export function Sidebar({
-  collapsed,
-  onToggle,
-}: {
-  collapsed: boolean;
-  onToggle: () => void;
-}) {
+export function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle: () => void }) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
 
   return (
@@ -57,18 +51,40 @@ export function Sidebar({
         collapsed ? "w-[64px]" : "w-[260px]",
       )}
     >
-      <div className={cn("flex items-center border-b border-sidebar-border py-4", collapsed ? "justify-center px-2" : "gap-2 px-3")}>
+      <div
+        className={cn(
+          "flex items-center border-b border-sidebar-border py-4",
+          collapsed ? "justify-center px-2" : "gap-2 px-3",
+        )}
+      >
         <div
           className={cn(
             "flex shrink-0 items-center justify-center rounded-xl bg-sidebar-accent/60",
+            collapsed && "group relative",
             collapsed ? "h-8 w-8" : "h-10 w-10",
           )}
         >
           <img
             src="/android-chrome-192x192.png"
             alt="Logo do Sistema de Devoluções"
-            className={cn("rounded-lg object-contain", collapsed ? "h-6 w-6" : "h-9 w-9")}
+            className={cn(
+              "rounded-lg object-contain",
+              collapsed
+                ? "h-6 w-6 transition-opacity group-hover:opacity-0 group-focus-within:opacity-0"
+                : "h-9 w-9",
+            )}
           />
+          {collapsed && (
+            <button
+              type="button"
+              aria-label="Expandir sidebar"
+              title="Expandir sidebar"
+              onClick={onToggle}
+              className="absolute inset-0 flex h-8 w-8 items-center justify-center rounded-md border border-sidebar-border bg-sidebar text-sidebar-foreground opacity-0 transition-[opacity,color,background-color] hover:bg-sidebar-accent hover:text-sidebar-accent-foreground group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar"
+            >
+              <PanelLeftOpen className="h-[15px] w-[15px]" />
+            </button>
+          )}
         </div>
 
         {!collapsed && (
@@ -93,20 +109,6 @@ export function Sidebar({
         )}
       </div>
 
-      {collapsed && (
-        <div className="flex justify-center border-b border-sidebar-border py-2">
-          <button
-            type="button"
-            aria-label="Expandir menu"
-            title="Expandir menu"
-            onClick={onToggle}
-            className="flex h-8 w-8 items-center justify-center rounded-md border border-sidebar-border bg-sidebar text-sidebar-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-          >
-            <PanelLeftOpen className="h-[15px] w-[15px]" />
-          </button>
-        </div>
-      )}
-
       <nav className={cn("flex-1 space-y-5 overflow-y-auto py-5", collapsed ? "px-1.5" : "px-3")}>
         {navGroups.map((group) => (
           <div key={group.title} className="space-y-1">
@@ -125,7 +127,9 @@ export function Sidebar({
                       title={collapsed ? item.label : undefined}
                       className={cn(
                         "group flex items-center rounded-lg transition-colors",
-                        collapsed ? "h-10 w-10 justify-center px-0" : "gap-3 px-3 py-2.5 text-sm font-medium",
+                        collapsed
+                          ? "h-10 w-10 justify-center px-0"
+                          : "gap-3 px-3 py-2.5 text-sm font-medium",
                         active
                           ? "bg-sidebar-primary text-sidebar-primary-foreground shadow-soft"
                           : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
