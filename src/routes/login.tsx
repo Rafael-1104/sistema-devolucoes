@@ -59,7 +59,7 @@ function Login() {
         setErro(falha === "Invalid login credentials" ? "E-mail ou senha inválidos." : falha);
         return;
       }
-      void navigate({ to: "/" });
+      await navigate({ to: "/" });
     } catch (falha) {
       setErro(falha instanceof Error ? falha.message : String(falha));
     } finally {

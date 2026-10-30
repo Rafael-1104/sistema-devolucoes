@@ -104,7 +104,7 @@ function NovaDevolucao() {
       if (!nova) return;
       definirDevolucaoAtiva(nova.id);
       toast.success(`Devolução ${nova.identificador} iniciada`);
-      void navigate({ to: "/nova-devolucao", search: { id: nova.id } });
+      await navigate({ to: "/nova-devolucao", search: { id: nova.id } });
     } finally {
       setIniciando(false);
     }
