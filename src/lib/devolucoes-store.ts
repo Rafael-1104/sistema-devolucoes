@@ -495,6 +495,19 @@ export function usePaginaDevolucoes(filtros: FiltrosDevolucoes, authenticated = 
     queryFn: () => buscarPaginaDevolucoes(filtros),
     enabled: typeof window !== "undefined" && authenticated,
     staleTime: TEMPO_CACHE_MS,
+    placeholderData: (previousData, previousQuery) => {
+      const filtrosAnteriores = previousQuery?.queryKey[2];
+      if (!previousData || !filtrosAnteriores || typeof filtrosAnteriores !== "object") {
+        return undefined;
+      }
+
+      const { pagina: _paginaAnterior, ...criteriosAnteriores } =
+        filtrosAnteriores as FiltrosDevolucoes;
+      const { pagina: _paginaAtual, ...criteriosAtuais } = filtros;
+      return JSON.stringify(criteriosAnteriores) === JSON.stringify(criteriosAtuais)
+        ? previousData
+        : undefined;
+    },
   });
 }
 

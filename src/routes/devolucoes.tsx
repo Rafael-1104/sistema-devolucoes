@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { CheckCircle2, Loader2, Search } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/lib/auth";
@@ -63,6 +63,8 @@ function Devolucoes() {
   const [de, setDe] = useState("");
   const [ate, setAte] = useState("");
   const [pagina, setPagina] = useState(1);
+  const listagemRef = useRef<HTMLDivElement>(null);
+  const paginaPendenteRolagemRef = useRef<number | null>(null);
   const [devolucaoParaExcluir, setDevolucaoParaExcluir] = useState<DevolucaoResumo | null>(null);
   const [excluindo, setExcluindo] = useState(false);
   const [exclusaoConcluida, setExclusaoConcluida] = useState(false);
@@ -88,13 +90,38 @@ function Devolucoes() {
 
   const itensPorPagina = 10;
   const totalPaginas = Math.ceil(totalRegistros / itensPorPagina);
-  const paginaAtual = Math.min(pagina, Math.max(totalPaginas, 1));
+  const paginaAtual = pagina;
   const inicioPagina = (paginaAtual - 1) * itensPorPagina;
   const primeiroRegistro = totalRegistros === 0 ? 0 : inicioPagina + 1;
   const ultimoRegistro = Math.min(inicioPagina + itensPorPagina, totalRegistros);
   useEffect(() => {
-    if (pagina !== paginaAtual) setPagina(paginaAtual);
-  }, [pagina, paginaAtual]);
+    if (resultadoPagina && !isFetching && pagina > Math.max(totalPaginas, 1)) {
+      setPagina(Math.max(totalPaginas, 1));
+    }
+  }, [isFetching, pagina, resultadoPagina, totalPaginas]);
+  useEffect(() => {
+    const paginaPendente = paginaPendenteRolagemRef.current;
+    if (paginaPendente === null) return;
+    if (paginaPendente !== pagina) {
+      paginaPendenteRolagemRef.current = null;
+      return;
+    }
+    if (isFetching || !resultadoPagina) return;
+    paginaPendenteRolagemRef.current = null;
+    listagemRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [isFetching, pagina, resultadoPagina]);
+
+  function selecionarPagina(novaPagina: number) {
+    if (novaPagina === pagina) return;
+    paginaPendenteRolagemRef.current = novaPagina;
+    setPagina(novaPagina);
+  }
+
+  function reiniciarPagina() {
+    paginaPendenteRolagemRef.current = null;
+    setPagina(1);
+  }
+
   const paginasVisiveis =
     totalPaginas <= 5
       ? Array.from({ length: totalPaginas }, (_, indice) => indice + 1)
@@ -154,7 +181,7 @@ function Devolucoes() {
                   value={busca}
                   onChange={(e) => {
                     setBusca(e.target.value);
-                    setPagina(1);
+                    reiniciarPagina();
                   }}
                 />
               </div>
@@ -165,7 +192,7 @@ function Devolucoes() {
                 value={usuarioId}
                 onChange={(e) => {
                   setUsuarioId(e.target.value);
-                  setPagina(1);
+                  reiniciarPagina();
                 }}
               >
                 <option value="todos">Todos</option>
@@ -182,7 +209,7 @@ function Devolucoes() {
                 value={status}
                 onChange={(e) => {
                   setStatus(e.target.value);
-                  setPagina(1);
+                  reiniciarPagina();
                 }}
               >
                 <option value="todos">Todos</option>
@@ -201,7 +228,7 @@ function Devolucoes() {
                   value={de}
                   onChange={(e) => {
                     setDe(e.target.value);
-                    setPagina(1);
+                    reiniciarPagina();
                   }}
                 />
               </Field>
@@ -212,7 +239,7 @@ function Devolucoes() {
                   value={ate}
                   onChange={(e) => {
                     setAte(e.target.value);
-                    setPagina(1);
+                    reiniciarPagina();
                   }}
                 />
               </Field>
@@ -220,88 +247,90 @@ function Devolucoes() {
           </div>
         </Panel>
 
-        <Panel
-          title={`${totalRegistros} devolução(ões)`}
-          description="Clique para abrir, retomar ou emitir o relatório"
-          bodyClassName="p-0"
-        >
-          {error ? (
-            <p role="alert" className="px-6 py-8 text-sm text-destructive">
-              Não foi possível carregar as devoluções: {error instanceof Error ? error.message : "erro desconhecido"}
-            </p>
-          ) : isLoading ? (
-            <p className="px-6 py-8 text-center text-sm text-muted-foreground">Carregando devoluções…</p>
-          ) : (
-          <DevolucoesTable
-            data={devolucoesDaPagina}
-            onView={(d) =>
-              void navigate({ to: "/nova-devolucao", search: { id: d.id, origem: "devolucoes" } })
-            }
-            onReport={(d) => void navigate({ to: "/relatorios", search: { id: d.id } })}
-            onDelete={(d) => {
-              if (d.status !== "finalizada") {
-                setErroExclusao(null);
-                setExclusaoConcluida(false);
-                setDevolucaoParaExcluir(d);
-              }
-            }}
-          />
-          )}
-          <div className="flex flex-col gap-3 border-t border-border px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
-            <p className="text-sm text-muted-foreground" aria-live="polite">
-              {isFetching ? "Atualizando… " : ""}Mostrando {primeiroRegistro}–{ultimoRegistro} de {totalRegistros} devoluções
-            </p>
-            {totalPaginas > 1 && (
-              <nav
-                aria-label="Paginação das devoluções"
-                className="flex flex-wrap items-center justify-center gap-1 sm:justify-end"
-              >
-                <button
-                  type="button"
-                  onClick={() => setPagina(paginaAtual - 1)}
-                  disabled={paginaAtual === 1}
-                  className="inline-flex h-9 items-center rounded-lg border border-border px-3 text-sm font-medium text-foreground transition-colors hover:border-primary/40 hover:bg-primary-soft hover:text-primary-dark disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:border-border disabled:hover:bg-transparent disabled:hover:text-foreground"
-                >
-                  Anterior
-                </button>
-                {paginasComLimites.map((item) =>
-                  typeof item === "number" ? (
-                    <button
-                      key={item}
-                      type="button"
-                      onClick={() => setPagina(item)}
-                      aria-current={paginaAtual === item ? "page" : undefined}
-                      aria-label={`Página ${item}`}
-                      className={`inline-flex h-9 min-w-9 items-center justify-center rounded-lg border px-2.5 text-sm font-semibold transition-colors ${
-                        paginaAtual === item
-                          ? "border-primary bg-primary text-primary-foreground"
-                          : "border-border text-foreground hover:border-primary/40 hover:bg-primary-soft hover:text-primary-dark"
-                      }`}
-                    >
-                      {item}
-                    </button>
-                  ) : (
-                    <span
-                      key={item}
-                      className="px-1 text-sm text-muted-foreground"
-                      aria-hidden="true"
-                    >
-                      …
-                    </span>
-                  ),
-                )}
-                <button
-                  type="button"
-                  onClick={() => setPagina(paginaAtual + 1)}
-                  disabled={paginaAtual === totalPaginas}
-                  className="inline-flex h-9 items-center rounded-lg border border-border px-3 text-sm font-medium text-foreground transition-colors hover:border-primary/40 hover:bg-primary-soft hover:text-primary-dark disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:border-border disabled:hover:bg-transparent disabled:hover:text-foreground"
-                >
-                  Próxima
-                </button>
-              </nav>
+        <div ref={listagemRef}>
+          <Panel
+            title={`${totalRegistros} devolução(ões)`}
+            description="Clique para abrir, retomar ou emitir o relatório"
+            bodyClassName="p-0"
+          >
+            {error ? (
+              <p role="alert" className="px-6 py-8 text-sm text-destructive">
+                Não foi possível carregar as devoluções: {error instanceof Error ? error.message : "erro desconhecido"}
+              </p>
+            ) : isLoading ? (
+              <p className="px-6 py-8 text-center text-sm text-muted-foreground">Carregando devoluções…</p>
+            ) : (
+              <DevolucoesTable
+                data={devolucoesDaPagina}
+                onView={(d) =>
+                  void navigate({ to: "/nova-devolucao", search: { id: d.id, origem: "devolucoes" } })
+                }
+                onReport={(d) => void navigate({ to: "/relatorios", search: { id: d.id } })}
+                onDelete={(d) => {
+                  if (d.status !== "finalizada") {
+                    setErroExclusao(null);
+                    setExclusaoConcluida(false);
+                    setDevolucaoParaExcluir(d);
+                  }
+                }}
+              />
             )}
-          </div>
-        </Panel>
+            <div className="flex flex-col gap-3 border-t border-border px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+              <p className="text-sm text-muted-foreground" aria-live="polite">
+                {isFetching ? "Atualizando… " : ""}Mostrando {primeiroRegistro}–{ultimoRegistro} de {totalRegistros} devoluções
+              </p>
+              {totalPaginas > 1 && (
+                <nav
+                  aria-label="Paginação das devoluções"
+                  className="flex flex-wrap items-center justify-center gap-1 sm:justify-end"
+                >
+                  <button
+                    type="button"
+                    onClick={() => selecionarPagina(paginaAtual - 1)}
+                    disabled={paginaAtual === 1}
+                    className="inline-flex h-9 items-center rounded-lg border border-border px-3 text-sm font-medium text-foreground transition-colors hover:border-primary/40 hover:bg-primary-soft hover:text-primary-dark disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:border-border disabled:hover:bg-transparent disabled:hover:text-foreground"
+                  >
+                    Anterior
+                  </button>
+                  {paginasComLimites.map((item) =>
+                    typeof item === "number" ? (
+                      <button
+                        key={item}
+                        type="button"
+                        onClick={() => selecionarPagina(item)}
+                        aria-current={paginaAtual === item ? "page" : undefined}
+                        aria-label={`Página ${item}`}
+                        className={`inline-flex h-9 min-w-9 items-center justify-center rounded-lg border px-2.5 text-sm font-semibold transition-colors ${
+                          paginaAtual === item
+                            ? "border-primary bg-primary text-primary-foreground"
+                            : "border-border text-foreground hover:border-primary/40 hover:bg-primary-soft hover:text-primary-dark"
+                        }`}
+                      >
+                        {item}
+                      </button>
+                    ) : (
+                      <span
+                        key={item}
+                        className="px-1 text-sm text-muted-foreground"
+                        aria-hidden="true"
+                      >
+                        …
+                      </span>
+                    ),
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => selecionarPagina(paginaAtual + 1)}
+                    disabled={paginaAtual === totalPaginas}
+                    className="inline-flex h-9 items-center rounded-lg border border-border px-3 text-sm font-medium text-foreground transition-colors hover:border-primary/40 hover:bg-primary-soft hover:text-primary-dark disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:border-border disabled:hover:bg-transparent disabled:hover:text-foreground"
+                  >
+                    Próxima
+                  </button>
+                </nav>
+              )}
+            </div>
+          </Panel>
+        </div>
 
         <Dialog
           open={devolucaoParaExcluir !== null}
