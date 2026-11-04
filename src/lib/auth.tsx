@@ -8,6 +8,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import type { Session, User } from "@supabase/supabase-js";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { supabase } from "@/lib/supabase";
@@ -69,6 +70,7 @@ function derivarIniciais(nome: string) {
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
+  const queryClient = useQueryClient();
   const [sessao, setSessao] = useState<Session | null>(null);
   const [perfil, setPerfil] = useState<PerfilUsuario | null>(null);
   const [carregando, setCarregando] = useState(true);
@@ -170,6 +172,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (evento === "SIGNED_OUT") {
         limparUltimaAtividadePersistida();
       }
+      if (evento === "SIGNED_IN" || evento === "SIGNED_OUT") {
+        queryClient.clear();
+      }
       setSessao(novaSessao);
       setCarregando(false);
     });
@@ -178,7 +183,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       ativo = false;
       sub.subscription.unsubscribe();
     };
-  }, []);
+  }, [queryClient]);
 
   useEffect(() => {
     if (!sessao) {

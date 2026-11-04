@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { useAuth } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
 import { campo, texto, type Payload } from "@/lib/supabase-flex";
 
@@ -24,22 +25,12 @@ export async function listarUsuarios(): Promise<UsuarioRegistro[]> {
 }
 
 export function useUsuarios() {
-  const [usuarios, setUsuarios] = useState<UsuarioRegistro[]>([]);
-  const [erro, setErro] = useState<string | null>(null);
-
-  useEffect(() => {
-    let vivo = true;
-    listarUsuarios()
-      .then((lista) => {
-        if (vivo) setUsuarios(lista);
-      })
-      .catch((e: unknown) => {
-        if (vivo) setErro(e instanceof Error ? e.message : String(e));
-      });
-    return () => {
-      vivo = false;
-    };
-  }, []);
-
-  return { usuarios, erro };
+  const { sessao } = useAuth();
+  const query = useQuery({
+    queryKey: ["usuarios"],
+    queryFn: listarUsuarios,
+    enabled: typeof window !== "undefined" && Boolean(sessao),
+    staleTime: 60_000,
+  });
+  return { usuarios: query.data ?? [], erro: query.error };
 }

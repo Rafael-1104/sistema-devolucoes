@@ -1,7 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { CheckCircle2, Loader2, Search } from "lucide-react";
 import { toast } from "sonner";
+import { useAuth } from "@/lib/auth";
 import {
   Dialog,
   DialogContent,
@@ -13,15 +14,14 @@ import {
 import { AppLayout } from "@/components/layout/AppLayout";
 import { Panel, Field } from "@/components/ui-kit/PageSection";
 import { DevolucoesTable } from "@/components/devolucoes/DevolucoesTable";
-import { removerDevolucao, useDevolucoes } from "@/lib/devolucoes-store";
+import { useOperacoesDevolucao, usePaginaDevolucoes } from "@/lib/devolucoes-store";
 import {
   formatarDataHora,
   statusLabels,
-  totalDevolucao,
-  type Devolucao,
   type DevolucaoStatus,
 } from "@/lib/mock-data";
 import { useUsuarios } from "@/lib/usuarios";
+import type { DevolucaoResumo } from "@/lib/devolucoes-store";
 
 export const Route = createFileRoute("/devolucoes")({
   head: () => ({
@@ -51,50 +51,50 @@ const btnGhost =
   "inline-flex items-center justify-center gap-2 rounded-lg border border-border px-4 py-2.5 text-sm font-semibold text-foreground transition-colors hover:border-primary/40 hover:bg-primary-soft hover:text-primary-dark disabled:cursor-not-allowed disabled:opacity-50";
 
 function Devolucoes() {
-  const devolucoes = useDevolucoes();
+  const { sessao } = useAuth();
   const { usuarios } = useUsuarios();
+  const operacoes = useOperacoesDevolucao();
   const navigate = Route.useNavigate();
 
   const [busca, setBusca] = useState("");
-  const [usuario, setUsuario] = useState("todos");
+  const [buscaAplicada, setBuscaAplicada] = useState("");
+  const [usuarioId, setUsuarioId] = useState("todos");
   const [status, setStatus] = useState("todos");
   const [de, setDe] = useState("");
   const [ate, setAte] = useState("");
   const [pagina, setPagina] = useState(1);
-  const [devolucaoParaExcluir, setDevolucaoParaExcluir] = useState<Devolucao | null>(null);
+  const [devolucaoParaExcluir, setDevolucaoParaExcluir] = useState<DevolucaoResumo | null>(null);
   const [excluindo, setExcluindo] = useState(false);
   const [exclusaoConcluida, setExclusaoConcluida] = useState(false);
   const [erroExclusao, setErroExclusao] = useState<string | null>(null);
 
-  const filtradas = useMemo(() => {
-    const termo = busca.trim().toLowerCase();
-    return devolucoes.filter((d) => {
-      if (usuario !== "todos" && d.criadoPor !== usuario) return false;
-      if (status !== "todos" && d.status !== status) return false;
-      const dia = d.criadoEm.slice(0, 10);
-      if (de && dia < de) return false;
-      if (ate && dia > ate) return false;
-      if (!termo) return true;
-      return (
-        d.identificador.toLowerCase().includes(termo) ||
-        (d.rm ?? "").toLowerCase().includes(termo) ||
-        d.criadoPor.toLowerCase().includes(termo) ||
-        d.itens.some(
-          (i) =>
-            i.materialCodigo.toLowerCase().includes(termo) ||
-            i.descricao.toLowerCase().includes(termo),
-        )
-      );
-    });
-  }, [devolucoes, busca, usuario, status, de, ate]);
+  useEffect(() => {
+    const timer = window.setTimeout(() => setBuscaAplicada(busca), 300);
+    return () => window.clearTimeout(timer);
+  }, [busca]);
+
+  const filtros = useMemo(() => ({
+    pagina,
+    busca: buscaAplicada,
+    usuarioId,
+    status,
+    de,
+    ate,
+    usuarios: usuarios.map(({ id, nome }) => ({ id, nome })),
+  }), [pagina, buscaAplicada, usuarioId, status, de, ate, usuarios]);
+  const { data: resultadoPagina, isLoading, isFetching, error } = usePaginaDevolucoes(filtros, Boolean(sessao));
+  const devolucoesDaPagina = resultadoPagina?.devolucoes ?? [];
+  const totalRegistros = resultadoPagina?.total ?? 0;
 
   const itensPorPagina = 10;
-  const totalPaginas = Math.ceil(filtradas.length / itensPorPagina);
+  const totalPaginas = Math.ceil(totalRegistros / itensPorPagina);
   const paginaAtual = Math.min(pagina, Math.max(totalPaginas, 1));
   const inicioPagina = (paginaAtual - 1) * itensPorPagina;
-  const devolucoesDaPagina = filtradas.slice(inicioPagina, inicioPagina + itensPorPagina);
-  const primeiroRegistro = filtradas.length === 0 ? 0 : inicioPagina + 1;
-  const ultimoRegistro = Math.min(inicioPagina + itensPorPagina, filtradas.length);
+  const primeiroRegistro = totalRegistros === 0 ? 0 : inicioPagina + 1;
+  const ultimoRegistro = Math.min(inicioPagina + itensPorPagina, totalRegistros);
+  useEffect(() => {
+    if (pagina !== paginaAtual) setPagina(paginaAtual);
+  }, [pagina, paginaAtual]);
   const paginasVisiveis =
     totalPaginas <= 5
       ? Array.from({ length: totalPaginas }, (_, indice) => indice + 1)
@@ -102,17 +102,19 @@ function Devolucoes() {
           { length: Math.min(3, totalPaginas) },
           (_, indice) => Math.max(1, Math.min(paginaAtual - 1, totalPaginas - 2)) + indice,
         );
+  const primeiraPaginaVisivel = paginasVisiveis[0] ?? 1;
+  const ultimaPaginaVisivel = paginasVisiveis[paginasVisiveis.length - 1] ?? totalPaginas;
   const paginasComLimites =
     totalPaginas <= 5
       ? paginasVisiveis
       : [
-          ...(paginasVisiveis[0] > 1
-            ? [1, ...(paginasVisiveis[0] > 2 ? ["inicio" as const] : [])]
+          ...(primeiraPaginaVisivel > 1
+            ? [1, ...(primeiraPaginaVisivel > 2 ? ["inicio" as const] : [])]
             : []),
           ...paginasVisiveis,
-          ...(paginasVisiveis[paginasVisiveis.length - 1] < totalPaginas
+          ...(ultimaPaginaVisivel < totalPaginas
             ? [
-                ...(paginasVisiveis[paginasVisiveis.length - 1] < totalPaginas - 1
+                ...(ultimaPaginaVisivel < totalPaginas - 1
                   ? ["fim" as const]
                   : []),
                 totalPaginas,
@@ -126,7 +128,7 @@ function Devolucoes() {
     setExcluindo(true);
     setErroExclusao(null);
     try {
-      const resultado = await removerDevolucao(alvo.id);
+      const resultado = await operacoes.remover(alvo.id);
       if (!resultado.ok) {
         setErroExclusao(resultado.error);
         return;
@@ -160,15 +162,15 @@ function Devolucoes() {
             <Field label="Usuário">
               <select
                 className={inputClass}
-                value={usuario}
+                value={usuarioId}
                 onChange={(e) => {
-                  setUsuario(e.target.value);
+                  setUsuarioId(e.target.value);
                   setPagina(1);
                 }}
               >
                 <option value="todos">Todos</option>
                 {usuarios.map((u) => (
-                  <option key={u.id} value={u.nome}>
+                  <option key={u.id} value={u.id}>
                     {u.nome}
                   </option>
                 ))}
@@ -219,10 +221,17 @@ function Devolucoes() {
         </Panel>
 
         <Panel
-          title={`${filtradas.length} devolução(ões)`}
+          title={`${totalRegistros} devolução(ões)`}
           description="Clique para abrir, retomar ou emitir o relatório"
           bodyClassName="p-0"
         >
+          {error ? (
+            <p role="alert" className="px-6 py-8 text-sm text-destructive">
+              Não foi possível carregar as devoluções: {error instanceof Error ? error.message : "erro desconhecido"}
+            </p>
+          ) : isLoading ? (
+            <p className="px-6 py-8 text-center text-sm text-muted-foreground">Carregando devoluções…</p>
+          ) : (
           <DevolucoesTable
             data={devolucoesDaPagina}
             onView={(d) =>
@@ -237,9 +246,10 @@ function Devolucoes() {
               }
             }}
           />
+          )}
           <div className="flex flex-col gap-3 border-t border-border px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
             <p className="text-sm text-muted-foreground" aria-live="polite">
-              Mostrando {primeiroRegistro}–{ultimoRegistro} de {filtradas.length} devoluções
+              {isFetching ? "Atualizando… " : ""}Mostrando {primeiroRegistro}–{ultimoRegistro} de {totalRegistros} devoluções
             </p>
             {totalPaginas > 1 && (
               <nav
@@ -343,12 +353,8 @@ function Devolucoes() {
                     <p>
                       <strong>Criado por:</strong> {devolucaoParaExcluir.criadoPor}
                     </p>
-                    <p>
-                      <strong>Itens:</strong> {devolucaoParaExcluir.itens.length}
-                    </p>
-                    <p>
-                      <strong>Quantidade total:</strong> {totalDevolucao(devolucaoParaExcluir)}
-                    </p>
+                    <p><strong>Itens:</strong> {devolucaoParaExcluir.quantidadeItens}</p>
+                    <p><strong>Quantidade total:</strong> {devolucaoParaExcluir.quantidadeTotal}</p>
                   </div>
                 )}
                 <p className="text-sm text-destructive">Essa ação não poderá ser desfeita.</p>

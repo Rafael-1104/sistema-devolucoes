@@ -3,12 +3,13 @@ import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { AlertTriangle, CheckCircle2, FileText, Printer } from "lucide-react";
 import { toast } from "sonner";
+import { useAuth } from "@/lib/auth";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Panel, Field } from "@/components/ui-kit/PageSection";
 import { StatusBadge } from "@/components/ui-kit/StatusBadge";
 import { ItensDevolucaoTable } from "@/components/devolucoes/ItensDevolucaoTable";
-import { finalizarDevolucao, useDevolucoes } from "@/lib/devolucoes-store";
+import { useDevolucao, useDevolucoesComRm, useOperacoesDevolucao } from "@/lib/devolucoes-store";
 import { formatarDataHora, totalDevolucao, totalItem, type Devolucao } from "@/lib/mock-data";
 
 export const Route = createFileRoute("/relatorios")({
@@ -42,13 +43,15 @@ const btnGhost =
 function Relatorios() {
   const { id } = Route.useSearch();
   const navigate = Route.useNavigate();
-  const devolucoes = useDevolucoes();
-
-  const disponiveis = devolucoes.filter((d) => d.rm !== null);
   const [selecionada, setSelecionada] = useState<string>(id ?? "");
   const [previa, setPrevia] = useState(false);
   const [confirmacaoFinalizacaoAberta, setConfirmacaoFinalizacaoAberta] = useState(false);
   const [finalizandoDevolucaoEmAndamento, setFinalizandoDevolucaoEmAndamento] = useState(false);
+  const { sessao } = useAuth();
+  const { data: disponiveis = [] } = useDevolucoesComRm(Boolean(sessao));
+  const { devolucao: carregada } = useDevolucao(selecionada || undefined, Boolean(sessao));
+  const devolucao = disponiveis.some((d) => d.id === selecionada) ? carregada : null;
+  const operacoes = useOperacoesDevolucao();
 
   useEffect(() => {
     if (id) {
@@ -57,14 +60,12 @@ function Relatorios() {
     }
   }, [id]);
 
-  const devolucao = disponiveis.find((d) => d.id === selecionada) ?? null;
-
   async function finalizar() {
     if (!devolucao || finalizandoDevolucaoEmAndamento) return;
 
     setFinalizandoDevolucaoEmAndamento(true);
     try {
-      const ok = await finalizarDevolucao(devolucao.id);
+      const ok = await operacoes.finalizar(devolucao.id);
       if (!ok) {
         toast.error("Não foi possível finalizar a devolução.");
         return;

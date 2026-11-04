@@ -1,6 +1,7 @@
 import { Eye, FileText, Trash2 } from "lucide-react";
 import { StatusBadge } from "@/components/ui-kit/StatusBadge";
-import { dataDaDevolucao, totalDevolucao, type Devolucao } from "@/lib/mock-data";
+import { formatarData } from "@/lib/mock-data";
+import type { DevolucaoResumo } from "@/lib/devolucoes-store";
 
 export function DevolucoesTable({
   data,
@@ -8,10 +9,10 @@ export function DevolucoesTable({
   onReport,
   onDelete,
 }: {
-  data: Devolucao[];
-  onView?: (d: Devolucao) => void;
-  onReport?: (d: Devolucao) => void;
-  onDelete?: (d: Devolucao) => void;
+  data: DevolucaoResumo[];
+  onView?: (d: DevolucaoResumo) => void;
+  onReport?: (d: DevolucaoResumo) => void;
+  onDelete?: (d: DevolucaoResumo) => void;
 }) {
   return (
     <div className="overflow-x-auto">
@@ -41,10 +42,10 @@ export function DevolucoesTable({
                   </span>
                 )}
               </td>
-              <td className="px-6 py-3.5 text-muted-foreground">{dataDaDevolucao(d)}</td>
+              <td className="px-6 py-3.5 text-muted-foreground">{formatarData(d.criadoEm)}</td>
               <td className="px-6 py-3.5 text-foreground">{d.criadoPor}</td>
-              <td className="px-6 py-3.5 tabular-nums text-foreground">{d.itens.length}</td>
-              <td className="px-6 py-3.5 tabular-nums text-foreground">{totalDevolucao(d)}</td>
+              <td className="px-6 py-3.5 tabular-nums text-foreground">{d.quantidadeItens}</td>
+              <td className="px-6 py-3.5 tabular-nums text-foreground">{d.quantidadeTotal}</td>
               <td className="px-6 py-3.5">
                 <StatusBadge status={d.status} />
               </td>

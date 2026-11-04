@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useSyncExternalStore } from "react";
+import { useCallback, useSyncExternalStore } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
 import { atualizarFlex, campo, inserirFlex, numero, texto, type Payload } from "@/lib/supabase-flex";
@@ -44,24 +45,11 @@ const ALIAS_VOLUME = {
   quantidade: ["qtd", "quantidade_volume"],
 };
 
-let state: Devolucao[] = [];
-let carregando = false;
-let carregado = false;
 let devolucaoAtivaId: string | null = null;
 let focoCodigoPendente = false;
 let focoPalavra1Pendente = false;
-const listeners = new Set<() => void>();
 const focoCodigoListeners = new Set<() => void>();
 const focoPalavra1Listeners = new Set<() => void>();
-
-function emit() {
-  for (const l of listeners) l();
-}
-
-function setState(next: Devolucao[]) {
-  state = next;
-  emit();
-}
 
 /* ------------------------------------------------------------------ */
 /* Mapeamento banco -> domínio                                         */
@@ -112,121 +100,420 @@ function mapDevolucao(linha: Payload, itens: ItemDevolucao[], nomes: Map<string,
   };
 }
 
-/* ------------------------------------------------------------------ */
-/* Carregamento                                                        */
-/* ------------------------------------------------------------------ */
+export type DevolucaoResumo = Omit<Devolucao, "itens"> & {
+  quantidadeItens: number;
+  quantidadeTotal: number;
+};
 
-export async function recarregar(): Promise<void> {
-  if (carregando) return;
-  carregando = true;
-  try {
-    const { data: sessao } = await supabase.auth.getSession();
-    if (!sessao.session) {
-      setState([]);
-      return;
-    }
+const PAGE_SIZE = 1000;
+const ITENS_POR_PAGINA = 10;
+const TEMPO_CACHE_MS = 15_000;
 
-    const { data: devsRaw, error } = await supabase.from("devolucoes").select("*");
-    if (error) throw error;
-    const devolucoes = (devsRaw ?? []) as Payload[];
-    const ids = devolucoes.map((d) => String(campo(d, ["id"])));
+export const chavesDevolucoes = {
+  todas: ["devolucoes"] as const,
+  lista: ["devolucoes", "lista"] as const,
+  abertas: ["devolucoes", "abertas"] as const,
+  comRm: ["devolucoes", "com-rm"] as const,
+  detalhe: (id: string) => ["devolucoes", "detalhe", id] as const,
+};
 
-    let itensRaw: Payload[] = [];
-    if (ids.length > 0) {
-      const { data, error: erroItens } = await supabase.from("itens_devolucao").select("*").in("devolucao_id", ids);
-      if (erroItens) throw erroItens;
-      itensRaw = (data ?? []) as Payload[];
-    }
+async function buscarNomesUsuarios(ids: string[]) {
+  const nomes = new Map<string, string>();
+  const unicos = [...new Set(ids.filter(Boolean))];
+  if (!unicos.length) return nomes;
 
-    const itemIds = itensRaw.map((i) => String(campo(i, ["id"])));
-    let volumesRaw: Payload[] = [];
-    if (itemIds.length > 0) {
-      const { data, error: erroVol } = await supabase.from("volumes_item").select("*").in("item_id", itemIds);
-      if (erroVol) throw erroVol;
-      volumesRaw = (data ?? []) as Payload[];
-    }
-
-    const descricoes = await buscarDescricoes(
-      itensRaw.map((i) => texto(campo(i, ["material_codigo", "codigo", "codigo_material"])) ?? ""),
-    );
-
-    const nomes = new Map<string, string>();
-    const { data: usuariosRaw } = await supabase.from("usuarios").select("*");
-    for (const u of (usuariosRaw ?? []) as Payload[]) {
-      const id = texto(campo(u, ["id"]));
-      const nome = texto(campo(u, ["nome", "nome_completo", "name", "email"]));
-      if (id && nome) nomes.set(id, nome);
-    }
-
-    const volumesPorItem = new Map<string, VolumeItem[]>();
-    for (const v of volumesRaw) {
-      const itemId = String(campo(v, ["item_id", "item_devolucao_id", "itens_devolucao_id"]) ?? "");
-      const lista = volumesPorItem.get(itemId) ?? [];
-      lista.push(mapVolume(v));
-      volumesPorItem.set(itemId, lista);
-    }
-
-    // Ordem estável dos itens: criação (quando existir) e, como desempate, o id.
-    // Assim editar um item nunca muda sua posição na lista.
-    const chaveOrdem = (linha: Payload) => {
-      const criado = texto(campo(linha, ["criado_em", "created_at", "data_criacao", "inserted_at"])) ?? "";
-      return `${criado}|${String(campo(linha, ["id"]) ?? "")}`;
-    };
-    const itensOrdenados = [...itensRaw].sort((a, b) => chaveOrdem(a).localeCompare(chaveOrdem(b)));
-
-    const itensPorDevolucao = new Map<string, ItemDevolucao[]>();
-    for (const i of itensOrdenados) {
-      const devId = String(campo(i, ["devolucao_id"]) ?? "");
-      const lista = itensPorDevolucao.get(devId) ?? [];
-      lista.push(mapItem(i, volumesPorItem.get(String(campo(i, ["id"]))) ?? [], descricoes));
-      itensPorDevolucao.set(devId, lista);
-    }
-
-    const mapeadas = devolucoes
-      .map((d) => mapDevolucao(d, itensPorDevolucao.get(String(campo(d, ["id"]))) ?? [], nomes))
-      .sort((a, b) => b.criadoEm.localeCompare(a.criadoEm));
-
-    setState(mapeadas);
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    toast.error(`Falha ao carregar devoluções: ${msg}`);
-  } finally {
-    carregando = false;
+  const { data, error } = await supabase.from("usuarios").select("*").in("id", unicos);
+  if (error) throw error;
+  for (const linha of (data ?? []) as Payload[]) {
+    const id = texto(campo(linha, ["id"]));
+    const nome = texto(campo(linha, ["nome", "nome_completo", "name", "email"]));
+    if (id && nome) nomes.set(id, nome);
   }
+  return nomes;
 }
 
-export function carregar() {
-  if (carregado || typeof window === "undefined") return;
-  carregado = true;
-  void recarregar();
+async function mapearDetalhes(devolucoes: Payload[]): Promise<Devolucao[]> {
+  if (!devolucoes.length) return [];
+  const devolucaoIds = devolucoes.map((linha) => String(campo(linha, ["id"])));
+  const autorIds = devolucoes.flatMap((linha) => [
+    texto(campo(linha, ["criado_por", "usuario_id", "user_id", "criado_por_id"])) ?? "",
+    texto(campo(linha, ["finalizado_por", "finalizada_por"])) ?? "",
+  ]);
+  const [{ data: itensData, error: erroItens }, nomes] = await Promise.all([
+    supabase.from("itens_devolucao").select("*").in("devolucao_id", devolucaoIds),
+    buscarNomesUsuarios(autorIds),
+  ]);
+  if (erroItens) throw erroItens;
+  const itensRaw = (itensData ?? []) as Payload[];
+  const itemIds = itensRaw.map((linha) => String(campo(linha, ["id"])));
+  let volumesRaw: Payload[] = [];
+  if (itemIds.length) {
+    const { data, error } = await supabase.from("volumes_item").select("*").in("item_id", itemIds);
+    if (error) throw error;
+    volumesRaw = (data ?? []) as Payload[];
+  }
+
+  const descricoes = await buscarDescricoes(
+    itensRaw.map((linha) => texto(campo(linha, ["material_codigo", "codigo", "codigo_material"])) ?? ""),
+  );
+  const volumesPorItem = new Map<string, VolumeItem[]>();
+  for (const linha of volumesRaw) {
+    const itemId = String(campo(linha, ["item_id", "item_devolucao_id", "itens_devolucao_id"]) ?? "");
+    const lista = volumesPorItem.get(itemId) ?? [];
+    lista.push(mapVolume(linha));
+    volumesPorItem.set(itemId, lista);
+  }
+
+  const chaveOrdem = (linha: Payload) => {
+    const criado = texto(campo(linha, ["criado_em", "created_at", "data_criacao", "inserted_at"])) ?? "";
+    return `${criado}|${String(campo(linha, ["id"]) ?? "")}`;
+  };
+  const itensPorDevolucao = new Map<string, ItemDevolucao[]>();
+  for (const linha of [...itensRaw].sort((a, b) => chaveOrdem(a).localeCompare(chaveOrdem(b)))) {
+    const devolucaoId = String(campo(linha, ["devolucao_id"]) ?? "");
+    const itens = itensPorDevolucao.get(devolucaoId) ?? [];
+    itens.push(mapItem(linha, volumesPorItem.get(String(campo(linha, ["id"]))) ?? [], descricoes));
+    itensPorDevolucao.set(devolucaoId, itens);
+  }
+
+  return devolucoes
+    .map((linha) => mapDevolucao(linha, itensPorDevolucao.get(String(campo(linha, ["id"]))) ?? [], nomes))
+    .sort((a, b) => b.criadoEm.localeCompare(a.criadoEm));
 }
 
-function subscribe(listener: () => void) {
-  listeners.add(listener);
-  return () => listeners.delete(listener);
+export async function buscarDevolucaoPorId(id: string): Promise<Devolucao | null> {
+  const { data, error } = await supabase.from("devolucoes").select("*").eq("id", id).maybeSingle();
+  if (error) throw error;
+  if (!data) return null;
+  const [devolucao] = await mapearDetalhes([data as Payload]);
+  return devolucao ?? null;
 }
 
-const getSnapshot = () => state;
-const vazio: Devolucao[] = [];
-const getServerSnapshot = () => vazio;
-
-export function useDevolucoes() {
-  useEffect(() => {
-    carregar();
-  }, []);
-  return useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
+function resumoDevolucao(devolucao: Devolucao): DevolucaoResumo {
+  return {
+    ...devolucao,
+    quantidadeItens: devolucao.itens.length,
+    quantidadeTotal: devolucao.itens.reduce(
+      (soma, item) => soma + item.volumes.reduce((total, volume) => total + volume.quantidade, 0),
+      0,
+    ),
+  };
 }
 
-export function useDevolucao(id: string | undefined) {
-  const lista = useDevolucoes();
-  return lista.find((d) => d.id === id) ?? null;
+async function buscarIdsPorTexto(
+  tabela: "devolucoes" | "itens_devolucao",
+  colunas: string[],
+  padrao: string,
+): Promise<string[]> {
+  const ids = new Set<string>();
+  for (const coluna of colunas) {
+    let colunaDisponivel = false;
+    for (let inicio = 0; ; inicio += PAGE_SIZE) {
+      const { data, error } = tabela === "devolucoes"
+        ? await supabase
+            .from("devolucoes")
+            .select("id")
+            .ilike(coluna, padrao)
+            .range(inicio, inicio + PAGE_SIZE - 1)
+        : await supabase
+            .from("itens_devolucao")
+            .select("devolucao_id")
+            .ilike(coluna, padrao)
+            .range(inicio, inicio + PAGE_SIZE - 1);
+      if (error) {
+        const ausente = error.message.match(/Could not find the '(.+?)' column/i)?.[1];
+        if (ausente === coluna) break;
+        throw error;
+      }
+      colunaDisponivel = true;
+      const linhas = (data ?? []) as Payload[];
+      for (const linha of linhas) {
+        const id = texto(campo(linha, [tabela === "devolucoes" ? "id" : "devolucao_id"]));
+        if (id) ids.add(id);
+      }
+      if (linhas.length < PAGE_SIZE) break;
+    }
+    if (colunaDisponivel) break;
+  }
+  return [...ids];
 }
 
-/** Força uma nova leitura do Supabase (usado após login). */
-export function useRecarregarDevolucoes() {
-  return useCallback(() => {
-    void recarregar();
-  }, []);
+async function buscarIdsPorMateriais(padrao: string): Promise<string[]> {
+  const codigos: string[] = [];
+  for (let inicio = 0; ; inicio += PAGE_SIZE) {
+    const { data, error } = await supabase
+      .from("materiais")
+      .select("codigo")
+      .ilike("descricao", padrao)
+      .range(inicio, inicio + PAGE_SIZE - 1);
+    if (error) throw error;
+    const linhas = (data ?? []) as Payload[];
+    codigos.push(...linhas.map((linha) => texto(campo(linha, ["codigo"])) ?? "").filter(Boolean));
+    if (linhas.length < PAGE_SIZE) break;
+  }
+  if (!codigos.length) return [];
+
+  const ids = new Set<string>();
+  for (let inicio = 0; inicio < codigos.length; inicio += 200) {
+    for (let inicioPagina = 0; ; inicioPagina += PAGE_SIZE) {
+      const { data, error } = await supabase
+        .from("itens_devolucao")
+        .select("devolucao_id")
+        .in("material_codigo", codigos.slice(inicio, inicio + 200))
+        .range(inicioPagina, inicioPagina + PAGE_SIZE - 1);
+      if (error) throw error;
+      const linhas = (data ?? []) as Payload[];
+      for (const linha of linhas) {
+        const id = texto(campo(linha, ["devolucao_id"]));
+        if (id) ids.add(id);
+      }
+      if (linhas.length < PAGE_SIZE) break;
+    }
+  }
+  return [...ids];
+}
+
+async function buscarIdsDevolucoesPorUsuario(usuariosIds: string[]): Promise<string[]> {
+  const ids = new Set<string>();
+  const colunas = ["criado_por", "usuario_id", "user_id", "criado_por_id"];
+  for (const coluna of colunas) {
+    let colunaDisponivel = false;
+    for (let inicio = 0; ; inicio += PAGE_SIZE) {
+      const { data, error } = await supabase
+        .from("devolucoes")
+        .select("id")
+        .in(coluna, usuariosIds)
+        .range(inicio, inicio + PAGE_SIZE - 1);
+      if (error) {
+        const ausente = error.message.match(/Could not find the '(.+?)' column/i)?.[1];
+        if (ausente === coluna) {
+          break;
+        }
+        throw error;
+      }
+      colunaDisponivel = true;
+      for (const linha of (data ?? []) as Payload[]) {
+        const id = texto(campo(linha, ["id"]));
+        if (id) ids.add(id);
+      }
+      if ((data ?? []).length < PAGE_SIZE) break;
+    }
+    if (colunaDisponivel) break;
+  }
+  return [...ids];
+}
+
+export interface FiltrosDevolucoes {
+  pagina: number;
+  busca: string;
+  usuarioId: string;
+  status: string;
+  de: string;
+  ate: string;
+  usuarios: { id: string; nome: string }[];
+}
+
+export interface PaginaDevolucoes {
+  devolucoes: DevolucaoResumo[];
+  total: number;
+}
+
+async function buscarPaginaDevolucoes(filtros: FiltrosDevolucoes): Promise<PaginaDevolucoes> {
+  const termo = filtros.busca.trim();
+  let idsBusca: string[] | null = null;
+  if (termo) {
+    const padrao = `%${termo.replace(/[\\%_]/g, "\\$&")}%`;
+    const [idsIdentificador, idsRm, idsCodigo, idsDescricao, idsMateriais] = await Promise.all([
+      buscarIdsPorTexto("devolucoes", ["identificador", "codigo", "numero"], padrao),
+      buscarIdsPorTexto("devolucoes", ["rm", "numero_rm", "rm_numero"], padrao),
+      buscarIdsPorTexto("itens_devolucao", ["material_codigo", "codigo", "codigo_material"], padrao),
+      buscarIdsPorTexto("itens_devolucao", ["descricao", "descricao_material"], padrao),
+      buscarIdsPorMateriais(padrao),
+    ]);
+    const nomes = filtros.usuarios
+      .filter((usuario) => usuario.nome.toLocaleLowerCase().includes(termo.toLocaleLowerCase()))
+      .map((usuario) => usuario.id);
+    const idsUsuarios = nomes.length ? await buscarIdsDevolucoesPorUsuario(nomes) : [];
+    idsBusca = [...new Set([...idsIdentificador, ...idsRm, ...idsCodigo, ...idsDescricao, ...idsMateriais, ...idsUsuarios])];
+    if (!idsBusca.length) return { devolucoes: [], total: 0 };
+  }
+
+  let consulta = supabase.from("devolucoes").select("*", { count: "exact" });
+  if (filtros.status !== "todos") consulta = consulta.eq("status", filtros.status);
+  if (filtros.usuarioId !== "todos") consulta = consulta.eq("criado_por", filtros.usuarioId);
+  if (filtros.de) consulta = consulta.gte("criado_em", `${filtros.de}T00:00:00.000Z`);
+  if (filtros.ate) {
+    const limite = new Date(`${filtros.ate}T00:00:00.000Z`);
+    limite.setUTCDate(limite.getUTCDate() + 1);
+    consulta = consulta.lt("criado_em", limite.toISOString());
+  }
+  if (idsBusca) consulta = consulta.in("id", idsBusca);
+
+  const inicio = (filtros.pagina - 1) * ITENS_POR_PAGINA;
+  const { data, count, error } = await consulta
+    .order("criado_em", { ascending: false })
+    .range(inicio, inicio + ITENS_POR_PAGINA - 1);
+  if (error) throw error;
+  const devolucoesRaw = (data ?? []) as Payload[];
+  const ids = devolucoesRaw.map((linha) => texto(campo(linha, ["id"])) ?? "").filter(Boolean);
+  const estatisticas = new Map<string, { quantidadeItens: number; quantidadeTotal: number }>();
+  if (ids.length) {
+    const { data: itensData, error: erroItens } = await supabase
+      .from("itens_devolucao")
+      .select("*")
+      .in("devolucao_id", ids);
+    if (erroItens) throw erroItens;
+    const itensRaw = (itensData ?? []) as Payload[];
+    const itemIds = itensRaw.map((linha) => texto(campo(linha, ["id"])) ?? "").filter(Boolean);
+    const devolucaoPorItem = new Map<string, string>();
+    for (const linha of itensRaw) {
+      const devolucaoId = texto(campo(linha, ["devolucao_id"])) ?? "";
+      const itemId = texto(campo(linha, ["id"])) ?? "";
+      const atual = estatisticas.get(devolucaoId) ?? { quantidadeItens: 0, quantidadeTotal: 0 };
+      atual.quantidadeItens += 1;
+      estatisticas.set(devolucaoId, atual);
+      if (itemId) devolucaoPorItem.set(itemId, devolucaoId);
+    }
+    if (itemIds.length) {
+      const { data: volumesData, error: erroVolumes } = await supabase
+        .from("volumes_item")
+        .select("*")
+        .in("item_id", itemIds);
+      if (erroVolumes) throw erroVolumes;
+      for (const linha of (volumesData ?? []) as Payload[]) {
+        const itemId = texto(campo(linha, ["item_id", "item_devolucao_id", "itens_devolucao_id"])) ?? "";
+        const devolucaoId = devolucaoPorItem.get(itemId);
+        if (!devolucaoId) continue;
+        const atual = estatisticas.get(devolucaoId);
+        if (atual) {
+          atual.quantidadeTotal += numero(campo(linha, ["quantidade", "qtd", "quantidade_volume"]));
+        }
+      }
+    }
+  }
+  const nomes = await buscarNomesUsuarios(
+    devolucoesRaw.map((linha) => texto(campo(linha, ["criado_por", "usuario_id", "user_id", "criado_por_id"])) ?? ""),
+  );
+  return {
+    devolucoes: devolucoesRaw.map((linha) => {
+      const resumo = resumoDevolucao(mapDevolucao(linha, [], nomes));
+      const estatistica = estatisticas.get(resumo.id);
+      return {
+        ...resumo,
+        quantidadeItens: estatistica?.quantidadeItens ?? 0,
+        quantidadeTotal: estatistica?.quantidadeTotal ?? 0,
+      };
+    }),
+    total: count ?? 0,
+  };
+}
+
+async function buscarDevolucoesAbertas(): Promise<DevolucaoResumo[]> {
+  const linhas: Payload[] = [];
+  for (let inicio = 0; ; inicio += PAGE_SIZE) {
+    const { data, error } = await supabase
+      .from("devolucoes")
+      .select("*")
+      .neq("status", "finalizada")
+      .order("criado_em", { ascending: false })
+      .range(inicio, inicio + PAGE_SIZE - 1);
+    if (error) throw error;
+    const pagina = (data ?? []) as Payload[];
+    linhas.push(...pagina);
+    if (pagina.length < PAGE_SIZE) break;
+  }
+  if (!linhas.length) return [];
+  const ids = linhas.map((linha) => texto(campo(linha, ["id"])) ?? "").filter(Boolean);
+  const { data: itensData, error: erroItens } = await supabase
+    .from("itens_devolucao")
+    .select("*")
+    .in("devolucao_id", ids);
+  if (erroItens) throw erroItens;
+  const itens = (itensData ?? []) as Payload[];
+  const itemIds = itens.map((linha) => texto(campo(linha, ["id"])) ?? "").filter(Boolean);
+  let volumes: Payload[] = [];
+  if (itemIds.length) {
+    const { data, error } = await supabase.from("volumes_item").select("*").in("item_id", itemIds);
+    if (error) throw error;
+    volumes = (data ?? []) as Payload[];
+  }
+  const totaisVolume = new Map<string, number>();
+  for (const linha of volumes) {
+    const itemId = texto(campo(linha, ["item_id", "item_devolucao_id", "itens_devolucao_id"])) ?? "";
+    totaisVolume.set(itemId, (totaisVolume.get(itemId) ?? 0) + numero(campo(linha, ["quantidade", "qtd", "quantidade_volume"])));
+  }
+  const estatisticas = new Map<string, { quantidadeItens: number; quantidadeTotal: number }>();
+  for (const linha of itens) {
+    const id = texto(campo(linha, ["devolucao_id"])) ?? "";
+    const itemId = texto(campo(linha, ["id"])) ?? "";
+    const atual = estatisticas.get(id) ?? { quantidadeItens: 0, quantidadeTotal: 0 };
+    atual.quantidadeItens += 1;
+    atual.quantidadeTotal += totaisVolume.get(itemId) ?? 0;
+    estatisticas.set(id, atual);
+  }
+  return linhas.map((linha) => {
+    const resumo = resumoDevolucao(mapDevolucao(linha, [], new Map()));
+    const estatistica = estatisticas.get(resumo.id);
+    return {
+      ...resumo,
+      quantidadeItens: estatistica?.quantidadeItens ?? 0,
+      quantidadeTotal: estatistica?.quantidadeTotal ?? 0,
+    };
+  });
+}
+
+async function buscarDevolucoesComRm(): Promise<DevolucaoResumo[]> {
+  const linhas: Payload[] = [];
+  for (let inicio = 0; ; inicio += PAGE_SIZE) {
+    const { data, error } = await supabase
+      .from("devolucoes")
+      .select("*")
+      .not("rm", "is", null)
+      .order("criado_em", { ascending: false })
+      .range(inicio, inicio + PAGE_SIZE - 1);
+    if (error) throw error;
+    const pagina = (data ?? []) as Payload[];
+    linhas.push(...pagina);
+    if (pagina.length < PAGE_SIZE) break;
+  }
+  return linhas.map((linha) => resumoDevolucao(mapDevolucao(linha, [], new Map())));
+}
+
+export function useDevolucao(id: string | undefined, authenticated = true) {
+  const query = useQuery({
+    queryKey: chavesDevolucoes.detalhe(id ?? ""),
+    queryFn: () => buscarDevolucaoPorId(id!),
+    enabled: typeof window !== "undefined" && authenticated && Boolean(id),
+    staleTime: TEMPO_CACHE_MS,
+  });
+  return { devolucao: query.data ?? null, carregando: query.isLoading, erro: query.error };
+}
+
+export function usePaginaDevolucoes(filtros: FiltrosDevolucoes, authenticated = true) {
+  return useQuery({
+    queryKey: [...chavesDevolucoes.lista, filtros],
+    queryFn: () => buscarPaginaDevolucoes(filtros),
+    enabled: typeof window !== "undefined" && authenticated,
+    staleTime: TEMPO_CACHE_MS,
+  });
+}
+
+export function useDevolucoesAbertas(authenticated = true, enabled = true) {
+  return useQuery({
+    queryKey: chavesDevolucoes.abertas,
+    queryFn: buscarDevolucoesAbertas,
+    enabled: typeof window !== "undefined" && authenticated && enabled,
+    staleTime: TEMPO_CACHE_MS,
+  });
+}
+
+export function useDevolucoesComRm(authenticated = true) {
+  return useQuery({
+    queryKey: chavesDevolucoes.comRm,
+    queryFn: buscarDevolucoesComRm,
+    enabled: typeof window !== "undefined" && authenticated,
+    staleTime: TEMPO_CACHE_MS,
+  });
 }
 
 export const podeEditar = (d: Devolucao) => d.status !== "finalizada";
@@ -313,11 +600,6 @@ async function exclusiva<T>(chave: string, acao: () => Promise<T>): Promise<T | 
   }
 }
 
-export async function listarDevolucoes() {
-  await recarregar();
-  return state;
-}
-
 export async function criarDevolucao(): Promise<Devolucao | null> {
   const resultado = await exclusiva("criarDevolucao", () =>
     comErro(async () => {
@@ -330,9 +612,7 @@ export async function criarDevolucao(): Promise<Devolucao | null> {
         ALIAS_DEVOLUCAO,
       );
       if (!linha) throw new Error("Devolução não criada.");
-      await recarregar();
-      const id = String(campo(linha, ["id"]));
-      return state.find((d) => d.id === id) ?? mapDevolucao(linha, [], new Map());
+      return mapDevolucao(linha, [], new Map());
     }),
   );
   return resultado ?? null;
@@ -369,7 +649,6 @@ export async function adicionarItem(
       );
       if (!linha) throw new Error("Item não criado.");
       await gravarVolumes(String(campo(linha, ["id"])), dados.volumes);
-      await recarregar();
       return true;
     }),
   );
@@ -398,7 +677,6 @@ export async function atualizarItem(
       const { error } = await supabase.from("volumes_item").delete().eq("item_id", itemId);
       if (error) throw error;
       await gravarVolumes(itemId, dados.volumes);
-      await recarregar();
       return true;
     }),
   );
@@ -421,7 +699,6 @@ export async function atualizarLoteItem(itemId: string, lote: string): Promise<b
         lote: [],
         alterado_em: ["updated_at"],
       });
-      await recarregar();
       return true;
     }),
   );
@@ -431,10 +708,10 @@ export async function atualizarLoteItem(itemId: string, lote: string): Promise<b
 export async function removerItem(_devolucaoId: string, itemId: string): Promise<boolean> {
   const ok = await exclusiva(`removerItem:${itemId}`, () =>
     comErro(async () => {
-      await supabase.from("volumes_item").delete().eq("item_id", itemId);
+      const { error: erroVolumes } = await supabase.from("volumes_item").delete().eq("item_id", itemId);
+      if (erroVolumes) throw erroVolumes;
       const { error } = await supabase.from("itens_devolucao").delete().eq("id", itemId);
       if (error) throw error;
-      await recarregar();
       return true;
     }),
   );
@@ -454,7 +731,6 @@ export async function registrarCsvGerado(devolucaoId: string): Promise<boolean> 
         },
         ALIAS_DEVOLUCAO,
       );
-      await recarregar();
       return true;
     }),
   );
@@ -470,7 +746,6 @@ export async function vincularRm(devolucaoId: string, rm: string): Promise<boole
         { rm, status: "rm_vinculada", rm_vinculada_em: new Date().toISOString() },
         ALIAS_DEVOLUCAO,
       );
-      await recarregar();
       return true;
     }),
   );
@@ -507,7 +782,6 @@ export async function finalizarDevolucao(devolucaoId: string): Promise<boolean> 
       throw new Error(`A devolução não foi finalizada no banco (status atual: ${status ?? "desconhecido"}).`);
     }
     if (devolucaoAtivaId === devolucaoId) devolucaoAtivaId = null;
-    await recarregar();
     return true;
   }));
   return ok === true;
@@ -518,7 +792,7 @@ export async function removerDevolucao(
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   const resultado = await exclusiva(`removerDevolucao:${devolucaoId}`, async () => {
     try {
-      const alvo = state.find((d) => d.id === devolucaoId);
+      const alvo = await buscarDevolucaoPorId(devolucaoId);
       if (!alvo) throw new Error("Devolução não encontrada.");
       if (alvo.status === "finalizada") throw new Error("Devoluções finalizadas não podem ser excluídas.");
       for (const item of alvo.itens) {
@@ -568,7 +842,6 @@ export async function removerDevolucao(
       }
 
       if (devolucaoAtivaId === devolucaoId) devolucaoAtivaId = null;
-      await recarregar();
       return { ok: true } as const;
     } catch (e) {
       const error = e instanceof Error ? e.message : String(e);
@@ -577,4 +850,109 @@ export async function removerDevolucao(
     }
   });
   return resultado ?? { ok: false, error: "A exclusão já está em andamento." };
+}
+
+export function useOperacoesDevolucao() {
+  const queryClient = useQueryClient();
+
+  const invalidarListas = useCallback(
+    async (id?: string, atualizarListaVisivel = false) => {
+      const invalidacoes = [
+        queryClient.invalidateQueries({
+          queryKey: chavesDevolucoes.lista,
+          refetchType: atualizarListaVisivel ? "active" : "none",
+        }),
+        queryClient.invalidateQueries({ queryKey: chavesDevolucoes.abertas, refetchType: "none" }),
+        queryClient.invalidateQueries({ queryKey: chavesDevolucoes.comRm, refetchType: "none" }),
+      ];
+      if (id) {
+        invalidacoes.push(
+          queryClient.invalidateQueries({ queryKey: chavesDevolucoes.detalhe(id), exact: true }),
+        );
+      }
+      await Promise.all(invalidacoes);
+    },
+    [queryClient],
+  );
+
+  const criar = useCallback(async () => {
+    const criada = await criarDevolucao();
+    if (!criada) return null;
+    await invalidarListas(criada.id);
+    return queryClient.fetchQuery({
+      queryKey: chavesDevolucoes.detalhe(criada.id),
+      queryFn: () => buscarDevolucaoPorId(criada.id),
+      staleTime: 0,
+    });
+  }, [invalidarListas, queryClient]);
+
+  const adicionar = useCallback(async (
+    devolucaoId: string,
+    dados: Parameters<typeof adicionarItem>[1],
+  ) => {
+    const sucesso = await adicionarItem(devolucaoId, dados);
+    if (sucesso) await invalidarListas(devolucaoId);
+    return sucesso;
+  }, [invalidarListas]);
+
+  const atualizar = useCallback(async (
+    devolucaoId: string,
+    itemId: string,
+    dados: Parameters<typeof atualizarItem>[2],
+  ) => {
+    const sucesso = await atualizarItem(devolucaoId, itemId, dados);
+    if (sucesso) await invalidarListas(devolucaoId);
+    return sucesso;
+  }, [invalidarListas]);
+
+  const atualizarLote = useCallback(async (devolucaoId: string, itemId: string, lote: string) => {
+    const sucesso = await atualizarLoteItem(itemId, lote);
+    if (sucesso) await invalidarListas(devolucaoId);
+    return sucesso;
+  }, [invalidarListas]);
+
+  const removerItemDaDevolucao = useCallback(async (devolucaoId: string, itemId: string) => {
+    const sucesso = await removerItem(devolucaoId, itemId);
+    if (sucesso) await invalidarListas(devolucaoId);
+    return sucesso;
+  }, [invalidarListas]);
+
+  const registrarCsv = useCallback(async (devolucaoId: string) => {
+    const sucesso = await registrarCsvGerado(devolucaoId);
+    if (sucesso) await invalidarListas(devolucaoId);
+    return sucesso;
+  }, [invalidarListas]);
+
+  const vincular = useCallback(async (devolucaoId: string, rm: string) => {
+    const sucesso = await vincularRm(devolucaoId, rm);
+    if (sucesso) await invalidarListas(devolucaoId);
+    return sucesso;
+  }, [invalidarListas]);
+
+  const finalizar = useCallback(async (devolucaoId: string) => {
+    const sucesso = await finalizarDevolucao(devolucaoId);
+    if (sucesso) await invalidarListas(devolucaoId);
+    return sucesso;
+  }, [invalidarListas]);
+
+  const remover = useCallback(async (devolucaoId: string) => {
+    const resultado = await removerDevolucao(devolucaoId);
+    if (resultado.ok) {
+      await invalidarListas(devolucaoId, true);
+      queryClient.removeQueries({ queryKey: chavesDevolucoes.detalhe(devolucaoId), exact: true });
+    }
+    return resultado;
+  }, [invalidarListas, queryClient]);
+
+  return {
+    criar,
+    adicionar,
+    atualizar,
+    atualizarLote,
+    removerItem: removerItemDaDevolucao,
+    registrarCsv,
+    vincular,
+    finalizar,
+    remover,
+  };
 }

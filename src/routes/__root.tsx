@@ -7,6 +7,7 @@ import {
   HeadContent,
   Scripts,
 } from "@tanstack/react-router";
+import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, type ReactNode } from "react";
 import { useState } from "react";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -15,12 +16,14 @@ import {
   obterDevolucaoAtivaId,
   solicitarFocoCodigo,
   solicitarFocoPalavra1,
-  useDevolucoes,
+  buscarDevolucaoPorId,
+  chavesDevolucoes,
 } from "@/lib/devolucoes-store";
+import { toast } from "sonner";
 
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
-import { AuthProvider } from "../lib/auth";
+import { AuthProvider, useAuth } from "../lib/auth";
 import { ThemeProvider } from "../lib/theme";
 
 const themeScript = `
@@ -59,7 +62,7 @@ function NotFoundComponent() {
   );
 }
 
-function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
+function ErrorComponent({ error, reset }: { error: unknown; reset: () => void }) {
   console.error(error);
   const router = useRouter();
   useEffect(() => {
@@ -171,11 +174,13 @@ const btnPrimary =
 
 function AtalhoDevolucaoAtiva() {
   const router = useRouter();
-  const devolucoes = useDevolucoes();
+  const queryClient = useQueryClient();
+  const { sessao } = useAuth();
   const [mostrarSemAtiva, setMostrarSemAtiva] = useState(false);
 
   useEffect(() => {
     function tratarF2(event: KeyboardEvent) {
+      if (!sessao) return;
       if (document.querySelector('[role="dialog"][data-state="open"]')) return;
       if (event.key === "F4") {
         event.preventDefault();
@@ -187,21 +192,36 @@ function AtalhoDevolucaoAtiva() {
       event.preventDefault();
 
       const idAtivo = obterDevolucaoAtivaId();
-      const ativa = devolucoes.find((devolucao) => devolucao.id === idAtivo);
-      if (!idAtivo || (ativa && ativa.status === "finalizada")) {
+      if (!idAtivo) {
         definirDevolucaoAtiva(null);
         setMostrarSemAtiva(true);
         return;
       }
 
-      void router
-        .navigate({ to: "/nova-devolucao", search: { id: idAtivo } })
-        .then(() => solicitarFocoCodigo());
+      void queryClient
+        .fetchQuery({
+          queryKey: chavesDevolucoes.detalhe(idAtivo),
+          queryFn: () => buscarDevolucaoPorId(idAtivo),
+          staleTime: 15_000,
+        })
+        .then((ativa) => {
+          if (!ativa || ativa.status === "finalizada") {
+            definirDevolucaoAtiva(null);
+            setMostrarSemAtiva(true);
+            return;
+          }
+          return router
+            .navigate({ to: "/nova-devolucao", search: { id: idAtivo } })
+            .then(() => solicitarFocoCodigo());
+        })
+        .catch((erro: unknown) => {
+          toast.error(erro instanceof Error ? erro.message : "Não foi possível carregar a devolução ativa.");
+        });
     }
 
     window.addEventListener("keydown", tratarF2);
     return () => window.removeEventListener("keydown", tratarF2);
-  }, [devolucoes, router]);
+  }, [queryClient, router, sessao]);
 
   return (
     <Dialog open={mostrarSemAtiva} onOpenChange={setMostrarSemAtiva}>

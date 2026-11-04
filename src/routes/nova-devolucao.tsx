@@ -15,6 +15,7 @@ import {
   X,
 } from "lucide-react";
 import { toast } from "sonner";
+import { useAuth } from "@/lib/auth";
 import { AppLayout } from "@/components/layout/AppLayout";
 import {
   Dialog,
@@ -38,20 +39,14 @@ import {
 } from "@/lib/mock-data";
 import { buscarMaterialPorCodigo } from "@/lib/materiais";
 import {
-  adicionarItem,
-  atualizarItem,
-  atualizarLoteItem,
   consumirSolicitacaoFocoCodigo,
-  criarDevolucao,
   definirDevolucaoAtiva,
   obterDevolucaoAtivaId,
   podeEditar,
-  registrarCsvGerado,
-  removerItem,
   useDevolucao,
+  useDevolucoesAbertas,
   useFocoCodigoSolicitado,
-  useDevolucoes,
-  vincularRm,
+  useOperacoesDevolucao,
 } from "@/lib/devolucoes-store";
 
 export const Route = createFileRoute("/nova-devolucao")({
@@ -87,20 +82,20 @@ const btnGhost =
 function NovaDevolucao() {
   const { id, origem } = Route.useSearch();
   const navigate = Route.useNavigate();
-  const devolucoes = useDevolucoes();
+  const { sessao } = useAuth();
+  const { criar } = useOperacoesDevolucao();
   const idEmMemoria = obterDevolucaoAtivaId();
-  const registroEmMemoria = devolucoes.find((d) => d.id === idEmMemoria);
-  const idAtivo = id ?? (idEmMemoria && registroEmMemoria?.status !== "finalizada" ? idEmMemoria : undefined);
-  const devolucao = useDevolucao(idAtivo);
+  const idAtivo = id ?? idEmMemoria ?? undefined;
+  const { data: devolucoesAbertas = [] } = useDevolucoesAbertas(Boolean(sessao), !idAtivo);
+  const { devolucao: carregada, carregando: carregandoDevolucao, erro } = useDevolucao(idAtivo, Boolean(sessao));
+  const devolucao = id ? carregada : carregada?.status !== "finalizada" ? carregada : null;
   const [iniciando, setIniciando] = useState(false);
-
-  const emAberto = devolucoes.filter((d) => d.status !== "finalizada");
 
   async function iniciar() {
     if (iniciando) return;
     setIniciando(true);
     try {
-      const nova = await criarDevolucao();
+      const nova = await criar();
       if (!nova) return;
       definirDevolucaoAtiva(nova.id);
       toast.success(`Devolução ${nova.identificador} iniciada`);
@@ -111,14 +106,34 @@ function NovaDevolucao() {
   }
 
   useEffect(() => {
-    if (!id && idAtivo && devolucao) {
+    if (!id && idAtivo && carregada && carregada.status !== "finalizada") {
       void navigate({ to: "/nova-devolucao", search: { id: idAtivo } });
     }
-  }, [devolucao, id, idAtivo, navigate]);
+  }, [carregada, id, idAtivo, navigate]);
 
   useEffect(() => {
     if (devolucao && devolucao.status !== "finalizada") definirDevolucaoAtiva(devolucao.id);
   }, [devolucao]);
+
+  if (idAtivo && carregandoDevolucao) {
+    return (
+      <AppLayout title="Nova devolução" subtitle="Carregando devolução">
+        <div className="flex min-h-40 items-center justify-center">
+          <Loader2 className="h-6 w-6 animate-spin text-primary" />
+        </div>
+      </AppLayout>
+    );
+  }
+
+  if (erro) {
+    return (
+      <AppLayout title="Nova devolução" subtitle="Não foi possível carregar a devolução">
+        <Panel title="Falha ao carregar" description={erro instanceof Error ? erro.message : "Tente novamente."}>
+          <p>Atualize a página ou tente novamente em instantes.</p>
+        </Panel>
+      </AppLayout>
+    );
+  }
 
   if (!devolucao) {
     return (
@@ -138,16 +153,16 @@ function NovaDevolucao() {
             </div>
           </Panel>
 
-          {emAberto.length > 0 && (
+          {devolucoesAbertas.length > 0 && (
             <Panel title="Devoluções em aberto" description="Retome uma devolução que ainda não foi finalizada">
               <ul className="divide-y divide-border">
-                {emAberto.map((d) => (
+                {devolucoesAbertas.map((d) => (
                   <li key={d.id} className="flex flex-wrap items-center justify-between gap-3 py-3 first:pt-0 last:pb-0">
                     <div className="flex items-center gap-3">
                       <span className="font-semibold text-foreground">{d.identificador}</span>
                       <StatusBadge status={d.status} />
                       <span className="text-xs text-muted-foreground">
-                        {d.itens.length} item(ns) · {totalDevolucao(d)} un.
+                        {d.quantidadeItens} item(ns) · {d.quantidadeTotal} un.
                       </span>
                     </div>
                     <Link
@@ -179,7 +194,9 @@ function NovaDevolucao() {
 }
 
 function EditorDevolucao({ devolucaoId, origem }: { devolucaoId: string; origem?: "devolucoes" }) {
-  const devolucao = useDevolucao(devolucaoId);
+  const { sessao } = useAuth();
+  const { devolucao, carregando, erro } = useDevolucao(devolucaoId, Boolean(sessao));
+  const operacoes = useOperacoesDevolucao();
   const navigate = Route.useNavigate();
 
   const [codigo, setCodigo] = useState("");
@@ -278,7 +295,23 @@ function EditorDevolucao({ devolucaoId, origem }: { devolucaoId: string; origem?
   const editavel = devolucao ? podeEditar(devolucao) : false;
   const total = useMemo(() => (devolucao ? totalDevolucao(devolucao) : 0), [devolucao]);
 
-  if (!devolucao) return null;
+  if (carregando) {
+    return (
+      <div className="flex min-h-40 items-center justify-center">
+        <Loader2 className="h-6 w-6 animate-spin text-primary" />
+      </div>
+    );
+  }
+  if (erro || !devolucao) {
+    return (
+      <Panel
+        title="Falha ao carregar devolução"
+        description={erro instanceof Error ? erro.message : "A devolução não foi encontrada."}
+      >
+        <p>Atualize a página ou volte à lista de devoluções.</p>
+      </Panel>
+    );
+  }
 
   function limpar() {
     setCodigo("");
@@ -331,8 +364,8 @@ function EditorDevolucao({ devolucaoId, origem }: { devolucaoId: string; origem?
     setAcaoSalvando(acao);
     try {
       const ok = editandoId
-        ? await atualizarItem(devolucaoId, editandoId, dados)
-        : await adicionarItem(devolucaoId, dados);
+        ? await operacoes.atualizar(devolucaoId, editandoId, dados)
+        : await operacoes.adicionar(devolucaoId, dados);
       if (!ok) return;
       toast.success(editandoId ? "Item atualizado" : "Item adicionado");
       limpar();
@@ -352,7 +385,7 @@ function EditorDevolucao({ devolucaoId, origem }: { devolucaoId: string; origem?
     setAcaoSalvando("csv");
     try {
       baixarCsv(`${devolucao!.identificador}.csv`, montarCsvAreco(devolucao!));
-      const ok = await registrarCsvGerado(devolucaoId);
+      const ok = await operacoes.registrarCsv(devolucaoId);
       if (ok) toast.success("CSV gerado para importação no ARECO");
     } finally {
       setAcaoSalvando(null);
@@ -368,7 +401,7 @@ function EditorDevolucao({ devolucaoId, origem }: { devolucaoId: string; origem?
     }
     setAcaoSalvando("rm");
     try {
-      const ok = await vincularRm(devolucaoId, valor);
+      const ok = await operacoes.vincular(devolucaoId, valor);
       if (!ok) return;
       setRmInput("");
       toast.success(`RM ${valor} vinculada à devolução`);
@@ -378,7 +411,7 @@ function EditorDevolucao({ devolucaoId, origem }: { devolucaoId: string; origem?
   }
 
   async function salvarLote(item: ItemDevolucao, novoLote: string) {
-    return atualizarLoteItem(item.id, novoLote);
+    return operacoes.atualizarLote(devolucaoId, item.id, novoLote);
   }
 
   async function confirmarRemocao() {
@@ -386,7 +419,7 @@ function EditorDevolucao({ devolucaoId, origem }: { devolucaoId: string; origem?
     const item = itemParaRemover;
     setAcaoSalvando("remover");
     try {
-      const ok = await removerItem(devolucaoId, item.id);
+      const ok = await operacoes.removerItem(devolucaoId, item.id);
       if (!ok) return;
       if (editandoId === item.id) limpar();
       setItemParaRemover(null);
